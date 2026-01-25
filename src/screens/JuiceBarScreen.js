@@ -52,7 +52,7 @@ const BORDER_COLORS = [
 ];
 
 // Loading animation
-const JuiceLoadingAnimation = require('../assets/food.json');
+const JuiceLoadingAnimation = require('../assets/juice.json');
 
 const JuiceBarScreen = ({ route, navigation }) => {
     const { colors } = useTheme();

@@ -52,7 +52,7 @@ const BORDER_COLORS = [
 ];
 
 // Loading animation
-const BakeryLoadingAnimation = require('../assets/food.json');
+const BakeryLoadingAnimation = require('../assets/bakery.json');
 
 const BakeryScreen = ({ route, navigation }) => {
     const { colors } = useTheme();

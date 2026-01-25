@@ -57,7 +57,7 @@ const BORDER_COLORS = [
 ];
 
 // Loading animation
-const MassageLoadingAnimation = require('../assets/food.json');
+const MassageLoadingAnimation = require('../assets/yoga.json');
 
 const MassageScreen = ({ route, navigation }) => {
     const { colors } = useTheme();

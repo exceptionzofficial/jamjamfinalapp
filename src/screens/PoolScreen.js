@@ -20,7 +20,7 @@ import { getPoolTypes, addPoolType, updatePoolType, deletePoolType, savePoolOrde
 import { SlideUp, FadeIn } from '../utils/animations';
 
 // Lottie animation
-const PoolLoadingAnimation = require('../assets/games icon.json');
+const PoolLoadingAnimation = require('../assets/pool.json');
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
