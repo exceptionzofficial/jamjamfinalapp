@@ -19,13 +19,13 @@ import QRCode from 'react-native-qrcode-svg';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import {
-    getBakeryItems,
-    saveBakeryOrder,
-    getCustomerBakeryOrders,
+    getMassageItems,
+    saveMassageOrder,
+    getCustomerMassageOrders,
     formatDateTime,
-    addBakeryItem,
-    updateBakeryItem,
-    deleteBakeryItem,
+    addMassageItem,
+    updateMassageItem,
+    deleteMassageItem,
     UPI_ID,
     getUPIString,
 } from '../utils/api';
@@ -34,14 +34,19 @@ import { SlideUp, FadeIn } from '../utils/animations';
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
 
-// Categories for filtering bakery items
-const CATEGORIES = [
-    { id: 'all', name: 'All', icon: 'cupcake' },
-    { id: 'bread', name: 'Breads', icon: 'bread-slice' },
-    { id: 'cakes', name: 'Cakes', icon: 'cake' },
-    { id: 'pastries', name: 'Pastries', icon: 'croissant' },
-    { id: 'cookies', name: 'Cookies', icon: 'cookie' },
-    { id: 'snacks', name: 'Snacks', icon: 'food' },
+// Massage Types
+const MASSAGE_TYPES = [
+    { id: 'hand', name: 'Hand Massage', icon: 'hand-heart', description: 'Traditional manual massage by experts' },
+    { id: 'machine', name: 'Machine Massage', icon: 'robot', description: 'Modern automated massage technology' },
+];
+
+// Default Massage Categories (can be customized)
+const DEFAULT_MASSAGE_CATEGORIES = [
+    { id: 'full-body', name: 'Full Body', icon: 'human', color: '#22C55E' },
+    { id: 'head', name: 'Head & Neck', icon: 'head-dots-horizontal', color: '#3B82F6' },
+    { id: 'foot', name: 'Foot', icon: 'foot-print', color: '#EC4899' },
+    { id: 'back', name: 'Back', icon: 'human-handsup', color: '#F59E0B' },
+    { id: 'special', name: 'Special', icon: 'star', color: '#8B5CF6' },
 ];
 
 // Border colors for menu cards (like Games)
@@ -52,13 +57,14 @@ const BORDER_COLORS = [
 ];
 
 // Loading animation
-const BakeryLoadingAnimation = require('../assets/food.json');
+const MassageLoadingAnimation = require('../assets/food.json');
 
-const BakeryScreen = ({ route, navigation }) => {
+const MassageScreen = ({ route, navigation }) => {
     const { colors } = useTheme();
     const customer = route.params?.customer;
 
     // States
+    const [massageType, setMassageType] = useState(null); // 'hand' or 'machine'
     const [menuItems, setMenuItems] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
     const [selectedCategory, setSelectedCategory] = useState('all');
@@ -84,19 +90,28 @@ const BakeryScreen = ({ route, navigation }) => {
     const [editingItem, setEditingItem] = useState(null);
     const [menuName, setMenuName] = useState('');
     const [menuPrice, setMenuPrice] = useState('');
-    const [menuCategory, setMenuCategory] = useState('veg');
+    const [menuCategory, setMenuCategory] = useState('full-body');
     const [menuDescription, setMenuDescription] = useState('');
-    const [menuQuantity, setMenuQuantity] = useState('1'); // Quantity per serving (e.g., "2" for "2 Dosa")
+    const [menuDuration, setMenuDuration] = useState('30'); // Duration in minutes
+
+    // Dynamic categories state
+    const [massageCategories, setMassageCategories] = useState(DEFAULT_MASSAGE_CATEGORIES);
+    const [showCategoryModal, setShowCategoryModal] = useState(false);
+    const [newCategoryName, setNewCategoryName] = useState('');
+    const [newCategoryIcon, setNewCategoryIcon] = useState('spa');
+    const [newCategoryColor, setNewCategoryColor] = useState('#10B981');
 
     // Load data with minimum 5 second loading animation
     const loadData = useCallback(async (showLoading = true) => {
+        if (!massageType) return; // Don't load if no type selected
+
         const startTime = Date.now();
 
         if (showLoading && menuItems.length === 0) {
             setIsLoading(true);
         }
         try {
-            const items = await getBakeryItems();
+            const items = await getMassageItems();
 
             // Smart update
             setMenuItems(prev => {
@@ -105,9 +120,9 @@ const BakeryScreen = ({ route, navigation }) => {
                 return prevIds !== newIds ? items : prev;
             });
         } catch (error) {
-            console.error('Error loading bakery items:', error);
+            console.error('Error loading massage items:', error);
             if (menuItems.length === 0) {
-                Alert.alert('Error', 'Could not load bakery items. Check your connection.');
+                Alert.alert('Error', 'Could not load massage items. Check your connection.');
             }
         } finally {
             // Ensure minimum 5 seconds loading animation
@@ -120,27 +135,39 @@ const BakeryScreen = ({ route, navigation }) => {
                 setRefreshing(false);
             }, remainingTime);
         }
-    }, [menuItems.length]);
+    }, [menuItems.length, massageType]);
 
+    // Load data when massage type changes
     useEffect(() => {
-        loadData(true);
-    }, []);
+        if (massageType) {
+            loadData(true);
+        }
+    }, [massageType]);
 
     // Auto-refresh every 5 seconds
     useEffect(() => {
+        if (!massageType) return;
         const intervalId = setInterval(() => {
             loadData(false);
         }, 5000);
         return () => clearInterval(intervalId);
-    }, [loadData]);
+    }, [loadData, massageType]);
 
-    // Filter items by category
+    // Build categories array with 'all' option
+    const CATEGORIES = useMemo(() => [
+        { id: 'all', name: 'All', icon: 'spa' },
+        ...massageCategories
+    ], [massageCategories]);
+
+    // Filter items by massage type and category
     const filteredItems = useMemo(() => {
+        // Filter by massage type first
+        const typeFiltered = menuItems.filter(item => item.massageType === massageType);
         if (selectedCategory === 'all') {
-            return menuItems;
+            return typeFiltered;
         }
-        return menuItems.filter(item => item.category === selectedCategory);
-    }, [menuItems, selectedCategory]);
+        return typeFiltered.filter(item => item.category === selectedCategory);
+    }, [menuItems, selectedCategory, massageType]);
 
     // Cart calculations
     const cartItems = useMemo(() => {
@@ -211,14 +238,14 @@ const BakeryScreen = ({ route, navigation }) => {
                 })),
                 totalAmount: cartTotal,
                 paymentMethod,
-                service: 'Bakery',
+                service: 'Massage',
             };
 
-            await saveBakeryOrder(order);
+            await saveMassageOrder(order);
 
             Alert.alert(
-                '✅ Order Confirmed',
-                `Bakery order for ₹${cartTotal} has been confirmed!\nPayment: ${paymentMethod}`,
+                '✅ Booking Confirmed',
+                `Massage booking for ₹${cartTotal} has been confirmed!\nPayment: ${paymentMethod}`,
                 [
                     {
                         text: 'OK',
@@ -240,7 +267,7 @@ const BakeryScreen = ({ route, navigation }) => {
     // Load order history
     const openHistory = async () => {
         try {
-            const history = await getCustomerBakeryOrders(customer.customerId || customer.id);
+            const history = await getCustomerMassageOrders(customer.customerId || customer.id);
             setOrderHistory(history);
             setShowHistoryModal(true);
         } catch (error) {
@@ -254,9 +281,9 @@ const BakeryScreen = ({ route, navigation }) => {
         setEditingItem(null);
         setMenuName('');
         setMenuPrice('');
-        setMenuCategory('veg');
+        setMenuCategory('full-body');
         setMenuDescription('');
-        setMenuQuantity('1');
+        setMenuDuration('30');
         setShowMenuManageModal(true);
     };
 
@@ -264,9 +291,9 @@ const BakeryScreen = ({ route, navigation }) => {
         setEditingItem(item);
         setMenuName(item.name);
         setMenuPrice(String(item.price));
-        setMenuCategory(item.category);
+        setMenuCategory(item.category || 'full-body');
         setMenuDescription(item.description || '');
-        setMenuQuantity(String(item.quantity || 1));
+        setMenuDuration(String(item.duration || 30));
         setShowMenuManageModal(true);
     };
 
@@ -286,15 +313,16 @@ const BakeryScreen = ({ route, navigation }) => {
                 price: Number(menuPrice),
                 category: menuCategory,
                 description: menuDescription.trim(),
-                quantity: Number(menuQuantity) || 1, // Portions per serving
+                duration: Number(menuDuration) || 30, // Duration in minutes
                 available: true,
+                massageType: massageType, // 'hand' or 'machine'
             };
 
             if (editingItem) {
-                await updateBakeryItem(editingItem.itemId || editingItem.id, itemData);
+                await updateMassageItem(editingItem.itemId || editingItem.id, itemData);
                 Alert.alert('Success', 'Menu item updated!');
             } else {
-                await addBakeryItem(itemData);
+                await addMassageItem(itemData);
                 Alert.alert('Success', 'Menu item added!');
             }
 
@@ -306,7 +334,7 @@ const BakeryScreen = ({ route, navigation }) => {
         }
     };
 
-    const handledeleteBakeryItem = (item) => {
+    const handleDeleteMassageItem = (item) => {
         Alert.alert(
             'Delete Item',
             `Are you sure you want to delete "${item.name}"?`,
@@ -317,7 +345,7 @@ const BakeryScreen = ({ route, navigation }) => {
                     style: 'destructive',
                     onPress: async () => {
                         try {
-                            await deleteBakeryItem(item.itemId || item.id);
+                            await deleteMassageItem(item.itemId || item.id);
                             loadData(false);
                             Alert.alert('Deleted', 'Menu item deleted successfully');
                         } catch (error) {
@@ -348,56 +376,108 @@ const BakeryScreen = ({ route, navigation }) => {
             openEditMenu(item);
             setIsEditMode(false);
         } else if (isDeleteMode) {
-            handledeleteBakeryItem(item);
+            handleDeleteMassageItem(item);
             setIsDeleteMode(false);
         } else {
             // Normal mode - add to cart
             addToCart(item.id);
         }
-    }, [isEditMode, isDeleteMode, openEditMenu, handledeleteBakeryItem, addToCart]);
+    }, [isEditMode, isDeleteMode, openEditMenu, handleDeleteMassageItem, addToCart]);
+
+    // Category Management Functions
+    const handleAddCategory = () => {
+        if (!newCategoryName.trim()) {
+            Alert.alert('Required', 'Please enter category name');
+            return;
+        }
+        const newCategory = {
+            id: newCategoryName.toLowerCase().replace(/\s+/g, '-'),
+            name: newCategoryName.trim(),
+            icon: newCategoryIcon,
+            color: newCategoryColor,
+        };
+        setMassageCategories(prev => [...prev, newCategory]);
+        setNewCategoryName('');
+        setNewCategoryIcon('spa');
+        setNewCategoryColor('#10B981');
+        Alert.alert('Success', 'Category added!');
+    };
+
+    const handleDeleteCategory = (categoryId) => {
+        Alert.alert(
+            'Delete Category',
+            'Are you sure you want to delete this category?',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: () => {
+                        setMassageCategories(prev => prev.filter(c => c.id !== categoryId));
+                        if (selectedCategory === categoryId) {
+                            setSelectedCategory('all');
+                        }
+                    },
+                },
+            ]
+        );
+    };
 
     // Render category tabs
     const renderCategoryTabs = () => (
-        <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.categoryContainer}
-            contentContainerStyle={styles.categoryContent}
-        >
-            {CATEGORIES.map(cat => (
-                <TouchableOpacity
-                    key={cat.id}
-                    style={[
-                        styles.categoryTab,
-                        {
-                            backgroundColor: selectedCategory === cat.id ? colors.brand : colors.surface,
-                            borderColor: colors.brand,
-                        }
-                    ]}
-                    onPress={() => setSelectedCategory(cat.id)}
-                >
-                    <Icon
-                        name={cat.icon}
-                        size={18}
-                        color={selectedCategory === cat.id ? '#FFFFFF' : colors.brand}
-                    />
-                    <Text style={[
-                        styles.categoryText,
-                        { color: selectedCategory === cat.id ? '#FFFFFF' : colors.brand }
-                    ]}>
-                        {cat.name}
-                    </Text>
-                </TouchableOpacity>
-            ))}
-        </ScrollView>
+        <View style={styles.categoryRow}>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                style={styles.categoryContainer}
+                contentContainerStyle={styles.categoryContent}
+            >
+                {CATEGORIES.map(cat => (
+                    <TouchableOpacity
+                        key={cat.id}
+                        style={[
+                            styles.categoryTab,
+                            {
+                                backgroundColor: selectedCategory === cat.id ? colors.brand : colors.surface,
+                                borderColor: colors.brand,
+                            }
+                        ]}
+                        onPress={() => setSelectedCategory(cat.id)}
+                    >
+                        <Icon
+                            name={cat.icon}
+                            size={18}
+                            color={selectedCategory === cat.id ? '#FFFFFF' : colors.brand}
+                        />
+                        <Text style={[
+                            styles.categoryText,
+                            { color: selectedCategory === cat.id ? '#FFFFFF' : colors.brand }
+                        ]}>
+                            {cat.name}
+                        </Text>
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+            <TouchableOpacity
+                style={[styles.categoryManageBtn, { backgroundColor: colors.surfaceLight }]}
+                onPress={() => setShowCategoryModal(true)}
+            >
+                <Icon name="cog" size={18} color={colors.brand} />
+            </TouchableOpacity>
+        </View>
     );
+
+    // Get category info for display
+    const getCategoryInfo = (categoryId) => {
+        return massageCategories.find(c => c.id === categoryId) || { icon: 'spa', color: '#8B5CF6', name: categoryId };
+    };
 
     // Render menu item
     const renderMenuItem = ({ item, index }) => {
         const quantity = cart[item.id] || 0;
         const isCombo = !!item.comboId;
         const price = isCombo ? item.comboPrice : item.price;
-        const isVeg = item.category === 'veg';
+        const categoryInfo = getCategoryInfo(item.category);
         const borderColor = BORDER_COLORS[index % BORDER_COLORS.length];
         const isInActionMode = isEditMode || isDeleteMode;
 
@@ -426,8 +506,9 @@ const BakeryScreen = ({ route, navigation }) => {
                             <View style={styles.menuCardLeft}>
                                 <View style={styles.menuCardHeader}>
                                     {!isCombo && (
-                                        <View style={[styles.vegBadge, { borderColor: isVeg ? '#22C55E' : '#EF4444' }]}>
-                                            <View style={[styles.vegDot, { backgroundColor: isVeg ? '#22C55E' : '#EF4444' }]} />
+                                        <View style={[styles.categoryBadge, { backgroundColor: categoryInfo.color + '20', borderColor: categoryInfo.color }]}>
+                                            <Icon name={categoryInfo.icon} size={12} color={categoryInfo.color} />
+                                            <Text style={[styles.categoryBadgeText, { color: categoryInfo.color }]}>{categoryInfo.name}</Text>
                                         </View>
                                     )}
                                     {isCombo && (
@@ -446,8 +527,8 @@ const BakeryScreen = ({ route, navigation }) => {
                                     </Text>
                                 )}
                                 <Text style={[styles.menuPrice, { color: colors.brand }]}>
-                                    {item.quantity && item.quantity > 1 && (
-                                        <Text style={styles.quantityBadge}>{item.quantity}× </Text>
+                                    {item.duration && (
+                                        <Text style={styles.durationBadge}>{item.duration} mins • </Text>
                                     )}
                                     ₹{price}
                                     {isCombo && item.originalPrice && (
@@ -655,6 +736,7 @@ const BakeryScreen = ({ route, navigation }) => {
         </Modal>
     );
 
+    // Checkout Modal
     // Checkout Modal - No longer needed, skipping directly to payment
     const renderCheckoutModal = () => null;
 
@@ -919,53 +1001,50 @@ const BakeryScreen = ({ route, navigation }) => {
                         <Text style={[styles.checkoutLabel, { color: colors.textPrimary, marginTop: 16 }]}>
                             Category *
                         </Text>
-                        <View style={styles.categorySelectRow}>
-                            {[
-                                { id: 'veg', name: 'Veg', icon: 'leaf', color: '#22C55E' },
-                                { id: 'non-veg', name: 'Non-Veg', icon: 'food-drumstick', color: '#EF4444' },
-                                { id: 'drinks', name: 'Drinks', icon: 'cup', color: '#3B82F6' },
-                                { id: 'desserts', name: 'Desserts', icon: 'ice-cream', color: '#EC4899' },
-                            ].map(cat => (
-                                <TouchableOpacity
-                                    key={cat.id}
-                                    style={[
-                                        styles.categorySelectBtn,
-                                        {
-                                            backgroundColor: menuCategory === cat.id ? cat.color : colors.surface,
-                                            borderColor: cat.color,
-                                        }
-                                    ]}
-                                    onPress={() => setMenuCategory(cat.id)}
-                                >
-                                    <Icon
-                                        name={cat.icon}
-                                        size={16}
-                                        color={menuCategory === cat.id ? '#FFFFFF' : cat.color}
-                                    />
-                                    <Text style={[
-                                        styles.categorySelectText,
-                                        { color: menuCategory === cat.id ? '#FFFFFF' : cat.color }
-                                    ]}>
-                                        {cat.name}
-                                    </Text>
-                                </TouchableOpacity>
-                            ))}
-                        </View>
+                        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categorySelectScroll}>
+                            <View style={styles.categorySelectRow}>
+                                {massageCategories.map(cat => (
+                                    <TouchableOpacity
+                                        key={cat.id}
+                                        style={[
+                                            styles.categorySelectBtn,
+                                            {
+                                                backgroundColor: menuCategory === cat.id ? cat.color : colors.surface,
+                                                borderColor: cat.color,
+                                            }
+                                        ]}
+                                        onPress={() => setMenuCategory(cat.id)}
+                                    >
+                                        <Icon
+                                            name={cat.icon}
+                                            size={16}
+                                            color={menuCategory === cat.id ? '#FFFFFF' : cat.color}
+                                        />
+                                        <Text style={[
+                                            styles.categorySelectText,
+                                            { color: menuCategory === cat.id ? '#FFFFFF' : cat.color }
+                                        ]}>
+                                            {cat.name}
+                                        </Text>
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </ScrollView>
 
-                        {/* Quantity per serving */}
+                        {/* Duration */}
                         <Text style={[styles.checkoutLabel, { color: colors.textPrimary, marginTop: 16 }]}>
-                            Quantity per Serving
+                            Duration (minutes)
                         </Text>
                         <Text style={[styles.helperText, { color: colors.textMuted }]}>
-                            e.g., "2" for 2 Dosa at this price
+                            e.g., "30" for a 30-minute session
                         </Text>
                         <TextInput
                             style={[styles.checkoutInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-                            placeholder="Enter quantity (default: 1)"
+                            placeholder="Enter duration (default: 30)"
                             placeholderTextColor={colors.textMuted}
                             keyboardType="number-pad"
-                            value={menuQuantity}
-                            onChangeText={setMenuQuantity}
+                            value={menuDuration}
+                            onChangeText={setMenuDuration}
                         />
 
                         {/* Description */}
@@ -997,18 +1076,91 @@ const BakeryScreen = ({ route, navigation }) => {
         </Modal>
     );
 
+    // Massage Type Selection Screen
+    const renderTypeSelectionScreen = () => (
+        <View style={[styles.container, { backgroundColor: colors.background }]}>
+            <Header subtitle="Massage" showTypewriter={false} />
+
+            <ScrollView
+                style={styles.typeSelectionScrollView}
+                contentContainerStyle={styles.typeSelectionContent}
+                showsVerticalScrollIndicator={false}
+            >
+                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.typeBackButton}>
+                    <Icon name="arrow-left" size={24} color={colors.textPrimary} />
+                </TouchableOpacity>
+
+                <View style={styles.typeHeader}>
+                    <Icon name="spa" size={48} color={colors.brand} />
+                    <Text style={[styles.typeTitle, { color: colors.textPrimary }]}>
+                        Select Massage Type
+                    </Text>
+                    <Text style={[styles.typeSubtitle, { color: colors.textSecondary }]}>
+                        For: {customer?.name}
+                    </Text>
+                </View>
+
+                <View style={styles.typeCards}>
+                    {MASSAGE_TYPES.map((type, index) => (
+                        <SlideUp key={type.id} delay={index * 100}>
+                            <TouchableOpacity
+                                style={[
+                                    styles.typeCard,
+                                    {
+                                        backgroundColor: colors.card,
+                                        borderColor: type.id === 'hand' ? '#10B981' : '#8B5CF6',
+                                    }
+                                ]}
+                                onPress={() => setMassageType(type.id)}
+                            >
+                                <View style={[
+                                    styles.typeIconContainer,
+                                    { backgroundColor: type.id === 'hand' ? '#10B98120' : '#8B5CF620' }
+                                ]}>
+                                    <Icon
+                                        name={type.icon}
+                                        size={48}
+                                        color={type.id === 'hand' ? '#10B981' : '#8B5CF6'}
+                                    />
+                                </View>
+                                <Text style={[styles.typeCardTitle, { color: colors.textPrimary }]}>
+                                    {type.name}
+                                </Text>
+                                <Text style={[styles.typeCardDescription, { color: colors.textMuted }]}>
+                                    {type.description}
+                                </Text>
+                                <View style={[
+                                    styles.typeSelectButton,
+                                    { backgroundColor: type.id === 'hand' ? '#10B981' : '#8B5CF6' }
+                                ]}>
+                                    <Text style={styles.typeSelectButtonText}>Select</Text>
+                                    <Icon name="arrow-right" size={18} color="#FFFFFF" />
+                                </View>
+                            </TouchableOpacity>
+                        </SlideUp>
+                    ))}
+                </View>
+            </ScrollView>
+        </View>
+    );
+
+    // Show type selection if no type selected
+    if (!massageType) {
+        return renderTypeSelectionScreen();
+    }
+
     // Loading state
     if (isLoading) {
         return (
             <View style={[styles.container, styles.loadingContainer, { backgroundColor: colors.background }]}>
                 <LottieView
-                    source={BakeryLoadingAnimation}
+                    source={MassageLoadingAnimation}
                     autoPlay
                     loop
                     style={styles.lottieAnimation}
                 />
                 <Text style={[styles.loadingText, { color: colors.textSecondary }]}>
-                    Loading Menu...
+                    Loading {massageType === 'hand' ? 'Hand' : 'Machine'} Massage Menu...
                 </Text>
             </View>
         );
@@ -1016,7 +1168,7 @@ const BakeryScreen = ({ route, navigation }) => {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <Header subtitle="Bakery" showTypewriter={false} />
+            <Header subtitle="Massage" showTypewriter={false} />
 
             <FlatList
                 data={filteredItems}
@@ -1078,6 +1230,116 @@ const BakeryScreen = ({ route, navigation }) => {
             {renderPaymentModal()}
             {renderHistoryModal()}
             {renderMenuManageModal()}
+
+            {/* Category Management Modal */}
+            <Modal
+                visible={showCategoryModal}
+                animationType="slide"
+                transparent={true}
+                onRequestClose={() => setShowCategoryModal(false)}
+            >
+                <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+                    <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                                Manage Categories
+                            </Text>
+                            <TouchableOpacity onPress={() => setShowCategoryModal(false)}>
+                                <Icon name="close" size={24} color={colors.textPrimary} />
+                            </TouchableOpacity>
+                        </View>
+
+                        <ScrollView style={styles.categoryModalContent}>
+                            {/* Add New Category */}
+                            <Text style={[styles.checkoutLabel, { color: colors.textPrimary }]}>
+                                Add New Category
+                            </Text>
+                            <TextInput
+                                style={[styles.checkoutInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
+                                placeholder="Category name"
+                                placeholderTextColor={colors.textMuted}
+                                value={newCategoryName}
+                                onChangeText={setNewCategoryName}
+                            />
+
+                            {/* Icon Selection */}
+                            <Text style={[styles.checkoutLabel, { color: colors.textPrimary, marginTop: 12 }]}>
+                                Select Icon
+                            </Text>
+                            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                                <View style={styles.iconSelectRow}>
+                                    {['spa', 'human', 'head-dots-horizontal', 'foot-print', 'human-handsup', 'star', 'hand-heart', 'meditation', 'flower-lotus', 'heart-pulse'].map(iconName => (
+                                        <TouchableOpacity
+                                            key={iconName}
+                                            style={[
+                                                styles.iconSelectBtn,
+                                                {
+                                                    backgroundColor: newCategoryIcon === iconName ? colors.brand : colors.surface,
+                                                    borderColor: colors.brand,
+                                                }
+                                            ]}
+                                            onPress={() => setNewCategoryIcon(iconName)}
+                                        >
+                                            <Icon name={iconName} size={20} color={newCategoryIcon === iconName ? '#FFFFFF' : colors.brand} />
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+                            </ScrollView>
+
+                            {/* Color Selection */}
+                            <Text style={[styles.checkoutLabel, { color: colors.textPrimary, marginTop: 12 }]}>
+                                Select Color
+                            </Text>
+                            <View style={styles.colorSelectRow}>
+                                {['#22C55E', '#3B82F6', '#EC4899', '#F59E0B', '#8B5CF6', '#10B981', '#EF4444', '#06B6D4'].map(colorCode => (
+                                    <TouchableOpacity
+                                        key={colorCode}
+                                        style={[
+                                            styles.colorSelectBtn,
+                                            {
+                                                backgroundColor: colorCode,
+                                                borderWidth: newCategoryColor === colorCode ? 3 : 0,
+                                                borderColor: '#FFFFFF',
+                                            }
+                                        ]}
+                                        onPress={() => setNewCategoryColor(colorCode)}
+                                    >
+                                        {newCategoryColor === colorCode && (
+                                            <Icon name="check" size={16} color="#FFFFFF" />
+                                        )}
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+
+                            <TouchableOpacity
+                                style={[styles.addCategoryBtn, { backgroundColor: colors.brand }]}
+                                onPress={handleAddCategory}
+                            >
+                                <Icon name="plus" size={18} color="#FFFFFF" />
+                                <Text style={styles.addCategoryBtnText}>Add Category</Text>
+                            </TouchableOpacity>
+
+                            {/* Existing Categories */}
+                            <Text style={[styles.checkoutLabel, { color: colors.textPrimary, marginTop: 24 }]}>
+                                Existing Categories
+                            </Text>
+                            {massageCategories.map(cat => (
+                                <View key={cat.id} style={[styles.existingCategoryItem, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                                    <View style={[styles.categoryColorDot, { backgroundColor: cat.color }]} />
+                                    <Icon name={cat.icon} size={18} color={cat.color} />
+                                    <Text style={[styles.existingCategoryName, { color: colors.textPrimary }]}>{cat.name}</Text>
+                                    <TouchableOpacity
+                                        style={styles.deleteCategoryBtn}
+                                        onPress={() => handleDeleteCategory(cat.id)}
+                                    >
+                                        <Icon name="delete" size={18} color="#EF4444" />
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </ScrollView>
+                    </View>
+                </View>
+            </Modal>
         </View>
     );
 };
@@ -1733,6 +1995,186 @@ const styles = StyleSheet.create({
         justifyContent: 'center',
         alignItems: 'center',
     },
+    // Type Selection Styles
+    typeSelectionContainer: {
+        flex: 1,
+        padding: 20,
+    },
+    typeBackButton: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    typeHeader: {
+        alignItems: 'center',
+        marginBottom: 32,
+    },
+    typeTitle: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginTop: 16,
+    },
+    typeSubtitle: {
+        fontSize: 14,
+        marginTop: 8,
+    },
+    typeCards: {
+        flex: 1,
+        justifyContent: 'center',
+        gap: 20,
+    },
+    typeCard: {
+        padding: 24,
+        borderRadius: 20,
+        borderWidth: 3,
+        alignItems: 'center',
+    },
+    typeIconContainer: {
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    typeCardTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        marginBottom: 8,
+    },
+    typeCardDescription: {
+        fontSize: 14,
+        textAlign: 'center',
+        marginBottom: 16,
+    },
+    typeSelectButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 32,
+        borderRadius: 25,
+        gap: 8,
+    },
+    typeSelectButtonText: {
+        color: '#FFFFFF',
+        fontWeight: '700',
+        fontSize: 16,
+    },
+    // Scrollable Type Selection
+    typeSelectionScrollView: {
+        flex: 1,
+    },
+    typeSelectionContent: {
+        padding: 20,
+        paddingBottom: 40,
+    },
+    // Category Row with manage button
+    categoryRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        marginVertical: 8,
+    },
+    categoryManageBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginLeft: 8,
+    },
+    categorySelectScroll: {
+        marginBottom: 8,
+    },
+    // Category Badge on items
+    categoryBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+        borderWidth: 1,
+        gap: 4,
+    },
+    categoryBadgeText: {
+        fontSize: 10,
+        fontWeight: '600',
+    },
+    // Duration badge
+    durationBadge: {
+        fontSize: 13,
+        fontWeight: '500',
+    },
+    // Category Modal
+    categoryModalContent: {
+        paddingHorizontal: 16,
+        maxHeight: 500,
+    },
+    iconSelectRow: {
+        flexDirection: 'row',
+        gap: 8,
+        paddingVertical: 8,
+    },
+    iconSelectBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+    },
+    colorSelectRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 10,
+        marginTop: 8,
+    },
+    colorSelectBtn: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    addCategoryBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        borderRadius: 10,
+        marginTop: 16,
+        gap: 8,
+    },
+    addCategoryBtnText: {
+        color: '#FFFFFF',
+        fontWeight: '600',
+        fontSize: 14,
+    },
+    existingCategoryItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderRadius: 10,
+        marginTop: 8,
+        borderWidth: 1,
+        gap: 10,
+    },
+    categoryColorDot: {
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+    },
+    existingCategoryName: {
+        flex: 1,
+        fontSize: 14,
+        fontWeight: '500',
+    },
+    deleteCategoryBtn: {
+        padding: 4,
+    },
 });
 
-export default BakeryScreen;
+export default MassageScreen;

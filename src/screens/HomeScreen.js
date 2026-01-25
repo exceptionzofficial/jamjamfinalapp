@@ -161,6 +161,10 @@ const HomeScreen = ({ navigation }) => {
             navigation.navigate('Bakery', { customer: selectedCustomer });
         } else if (service.id === 'juice') {
             navigation.navigate('JuiceBar', { customer: selectedCustomer });
+        } else if (service.id === 'massage') {
+            navigation.navigate('Massage', { customer: selectedCustomer });
+        } else if (service.id === 'pool') {
+            navigation.navigate('Pool', { customer: selectedCustomer });
         } else {
             console.log('Service selected:', service.name, 'for customer:', selectedCustomer?.name);
         }

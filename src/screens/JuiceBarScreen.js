@@ -77,9 +77,6 @@ const JuiceBarScreen = ({ route, navigation }) => {
     const [isDeleteMode, setIsDeleteMode] = useState(false);
 
     // Checkout states
-    const [orderType, setOrderType] = useState('dining'); // 'dining' or 'room'
-    const [tableNo, setTableNo] = useState('');
-    const [roomNo, setRoomNo] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('');
     const [orderHistory, setOrderHistory] = useState([]);
 
@@ -187,27 +184,13 @@ const JuiceBarScreen = ({ route, navigation }) => {
         });
     };
 
-    // Open checkout
+    // Proceed to payment (skip checkout modal, go directly to payment)
     const openCheckout = () => {
         if (cartCount === 0) {
             Alert.alert('Empty Cart', 'Add items to your cart first');
             return;
         }
         setShowCartModal(false);
-        setShowCheckoutModal(true);
-    };
-
-    // Proceed to payment
-    const proceedToPayment = () => {
-        if (orderType === 'dining' && !tableNo.trim()) {
-            Alert.alert('Required', 'Please enter table number');
-            return;
-        }
-        if (orderType === 'room' && !roomNo.trim()) {
-            Alert.alert('Required', 'Please enter room number');
-            return;
-        }
-        setShowCheckoutModal(false);
         setShowPaymentModal(true);
     };
 
@@ -226,9 +209,6 @@ const JuiceBarScreen = ({ route, navigation }) => {
                     subtotal: item.subtotal,
                 })),
                 totalAmount: cartTotal,
-                orderType,
-                tableNo: orderType === 'dining' ? tableNo : null,
-                roomNo: orderType === 'room' ? roomNo : null,
                 paymentMethod,
                 service: 'Juice',
             };
@@ -236,16 +216,14 @@ const JuiceBarScreen = ({ route, navigation }) => {
             await saveJuiceOrder(order);
 
             Alert.alert(
-                '✅ Order Placed',
-                `Order for ₹${cartTotal} has been placed successfully!\n${orderType === 'dining' ? `Table: ${tableNo}` : `Room: ${roomNo}`}\nPayment: ${paymentMethod}`,
+                '✅ Order Confirmed',
+                `Juice Bar order for ₹${cartTotal} has been confirmed!\nPayment: ${paymentMethod}`,
                 [
                     {
                         text: 'OK',
                         onPress: () => {
                             setShowPaymentModal(false);
                             setCart({});
-                            setTableNo('');
-                            setRoomNo('');
                             setPaymentMethod('');
                             navigation.goBack();
                         },
@@ -674,121 +652,8 @@ const JuiceBarScreen = ({ route, navigation }) => {
         </Modal>
     );
 
-    // Checkout Modal
-    const renderCheckoutModal = () => (
-        <Modal
-            visible={showCheckoutModal}
-            animationType="slide"
-            transparent={true}
-            onRequestClose={() => setShowCheckoutModal(false)}
-        >
-            <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-                <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
-                    <View style={styles.modalHeader}>
-                        <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Checkout</Text>
-                        <TouchableOpacity onPress={() => setShowCheckoutModal(false)}>
-                            <Icon name="close" size={24} color={colors.textPrimary} />
-                        </TouchableOpacity>
-                    </View>
-
-                    <ScrollView style={styles.checkoutContent}>
-                        {/* Order Type Selection */}
-                        <Text style={[styles.checkoutLabel, { color: colors.textPrimary }]}>
-                            Where is this order for?
-                        </Text>
-                        <View style={styles.orderTypeOptions}>
-                            <TouchableOpacity
-                                style={[
-                                    styles.orderTypeOption,
-                                    {
-                                        backgroundColor: orderType === 'dining' ? colors.brand : colors.surface,
-                                        borderColor: colors.brand,
-                                    }
-                                ]}
-                                onPress={() => setOrderType('dining')}
-                            >
-                                <Icon
-                                    name="table-furniture"
-                                    size={24}
-                                    color={orderType === 'dining' ? '#FFFFFF' : colors.brand}
-                                />
-                                <Text style={[
-                                    styles.orderTypeText,
-                                    { color: orderType === 'dining' ? '#FFFFFF' : colors.brand }
-                                ]}>
-                                    Dining
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[
-                                    styles.orderTypeOption,
-                                    {
-                                        backgroundColor: orderType === 'room' ? colors.brand : colors.surface,
-                                        borderColor: colors.brand,
-                                    }
-                                ]}
-                                onPress={() => setOrderType('room')}
-                            >
-                                <Icon
-                                    name="bed"
-                                    size={24}
-                                    color={orderType === 'room' ? '#FFFFFF' : colors.brand}
-                                />
-                                <Text style={[
-                                    styles.orderTypeText,
-                                    { color: orderType === 'room' ? '#FFFFFF' : colors.brand }
-                                ]}>
-                                    Room
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        {/* Table/Room Number */}
-                        <Text style={[styles.checkoutLabel, { color: colors.textPrimary }]}>
-                            {orderType === 'dining' ? 'Table Number' : 'Room Number'}
-                        </Text>
-                        <TextInput
-                            style={[styles.checkoutInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-                            placeholder={orderType === 'dining' ? 'Enter table number' : 'Enter room number'}
-                            placeholderTextColor={colors.textMuted}
-                            keyboardType="number-pad"
-                            value={orderType === 'dining' ? tableNo : roomNo}
-                            onChangeText={orderType === 'dining' ? setTableNo : setRoomNo}
-                        />
-
-                        {/* Order Summary */}
-                        <Text style={[styles.checkoutLabel, { color: colors.textPrimary, marginTop: 20 }]}>
-                            Order Summary
-                        </Text>
-                        <View style={[styles.orderSummary, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-                            {cartItems.map(item => (
-                                <View key={item.id} style={styles.summaryItem}>
-                                    <Text style={[styles.summaryItemName, { color: colors.textPrimary }]}>
-                                        {item.name} × {item.quantity}
-                                    </Text>
-                                    <Text style={[styles.summaryItemPrice, { color: colors.textMuted }]}>
-                                        ₹{item.subtotal}
-                                    </Text>
-                                </View>
-                            ))}
-                            <View style={[styles.summaryTotal, { borderTopColor: colors.border }]}>
-                                <Text style={[styles.summaryTotalLabel, { color: colors.textPrimary }]}>Total</Text>
-                                <Text style={[styles.summaryTotalValue, { color: colors.brand }]}>₹{cartTotal}</Text>
-                            </View>
-                        </View>
-                    </ScrollView>
-
-                    <TouchableOpacity
-                        style={[styles.proceedButton, { backgroundColor: colors.brand }]}
-                        onPress={proceedToPayment}
-                    >
-                        <Text style={styles.proceedButtonText}>Continue to Payment</Text>
-                        <Icon name="arrow-right" size={20} color="#FFFFFF" />
-                    </TouchableOpacity>
-                </View>
-            </View>
-        </Modal>
-    );
+    // Checkout Modal - No longer needed, skipping directly to payment
+    const renderCheckoutModal = () => null;
 
     // Payment Modal
     const renderPaymentModal = () => (

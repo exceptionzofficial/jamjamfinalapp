@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Production URL
 // const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
-const API_BASE_URL = 'https://82a01f884f91.ngrok-free.app/api';
+const API_BASE_URL = 'https://642786f8dfbb.ngrok-free.app/api';
 
 // ============= UPI Payment Configuration =============
 // Change this to your UPI ID - used across all payment screens
@@ -405,3 +405,90 @@ export const getCustomerJuiceOrders = async (customerId) => {
     return await apiCall(`/juice-orders/customer/${customerId}`);
 };
 
+// ============= MASSAGE ITEMS API (LIVE) =============
+
+export const getMassageItems = async () => {
+    const items = await apiCall('/massage-items');
+    return items.map(item => ({
+        ...item,
+        id: item.itemId || item.id,
+    }));
+};
+
+export const addMassageItem = async (item) => {
+    return await apiCall('/massage-items', {
+        method: 'POST',
+        body: JSON.stringify(item),
+    });
+};
+
+export const updateMassageItem = async (itemId, updates) => {
+    return await apiCall(`/massage-items/${itemId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+    });
+};
+
+export const deleteMassageItem = async (itemId) => {
+    return await apiCall(`/massage-items/${itemId}`, {
+        method: 'DELETE',
+    });
+};
+
+// ============= MASSAGE ORDERS API (LIVE) =============
+
+export const saveMassageOrder = async (order) => {
+    return await apiCall('/massage-orders', {
+        method: 'POST',
+        body: JSON.stringify(order),
+    });
+};
+
+export const getCustomerMassageOrders = async (customerId) => {
+    if (!customerId) return [];
+    return await apiCall(`/massage-orders/customer/${customerId}`);
+};
+
+// ============= POOL TYPES API (LIVE) =============
+
+export const getPoolTypes = async () => {
+    const types = await apiCall('/pool-types');
+    return types.map(type => ({
+        ...type,
+        id: type.typeId || type.id,
+    }));
+};
+
+export const addPoolType = async (type) => {
+    return await apiCall('/pool-types', {
+        method: 'POST',
+        body: JSON.stringify(type),
+    });
+};
+
+export const updatePoolType = async (typeId, updates) => {
+    return await apiCall(`/pool-types/${typeId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+    });
+};
+
+export const deletePoolType = async (typeId) => {
+    return await apiCall(`/pool-types/${typeId}`, {
+        method: 'DELETE',
+    });
+};
+
+// ============= POOL ORDERS API (LIVE) =============
+
+export const savePoolOrder = async (order) => {
+    return await apiCall('/pool-orders', {
+        method: 'POST',
+        body: JSON.stringify(order),
+    });
+};
+
+export const getCustomerPoolOrders = async (customerId) => {
+    if (!customerId) return [];
+    return await apiCall(`/pool-orders/customer/${customerId}`);
+};

@@ -11,6 +11,8 @@ import GamesScreen from '../screens/GamesScreen';
 import RestaurantScreen from '../screens/RestaurantScreen';
 import BakeryScreen from '../screens/BakeryScreen';
 import JuiceBarScreen from '../screens/JuiceBarScreen';
+import MassageScreen from '../screens/MassageScreen';
+import PoolScreen from '../screens/PoolScreen';
 import { useTheme } from '../context/ThemeContext';
 
 const Tab = createBottomTabNavigator();
@@ -111,6 +113,8 @@ const AppNavigator = () => {
             <Stack.Screen name="Restaurant" component={RestaurantScreen} />
             <Stack.Screen name="Bakery" component={BakeryScreen} />
             <Stack.Screen name="JuiceBar" component={JuiceBarScreen} />
+            <Stack.Screen name="Massage" component={MassageScreen} />
+            <Stack.Screen name="Pool" component={PoolScreen} />
         </Stack.Navigator>
     );
 };
