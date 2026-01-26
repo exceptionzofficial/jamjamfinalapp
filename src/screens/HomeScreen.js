@@ -15,7 +15,7 @@ import CustomerCard from '../components/CustomerCard';
 import ServiceCard, { SERVICES } from '../components/ServiceCard';
 import BannerCarousel from '../components/BannerCarousel';
 import { useTheme } from '../context/ThemeContext';
-import { getRecentCustomers, searchCustomers, addToRecent } from '../utils/api';
+import { getRecentCustomers, searchCustomers, addToRecent, getCustomerRestaurantOrders } from '../utils/api';
 import { FadeIn, SlideUp, StaggerItem } from '../utils/animations';
 
 const { width } = Dimensions.get('window');
@@ -27,6 +27,7 @@ const HomeScreen = ({ navigation }) => {
     const [customers, setCustomers] = useState([]);
     const [recentCustomers, setRecentCustomers] = useState([]);
     const [selectedCustomer, setSelectedCustomer] = useState(null);
+    const [pendingOrders, setPendingOrders] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
 
@@ -103,10 +104,23 @@ const HomeScreen = ({ navigation }) => {
         setSelectedCustomer(customer);
         await addToRecent(customer);
         loadRecentCustomers();
+
+        // Fetch pending orders for the selected customer
+        try {
+            const orders = await getCustomerRestaurantOrders(customer.customerId || customer.id);
+            setPendingOrders(orders.filter(o => o.paymentMethod === 'paylater'));
+        } catch (error) {
+            console.error('Error fetching pending orders:', error);
+        }
     };
 
     const handleBackToSearch = () => {
         setSelectedCustomer(null);
+    };
+
+    const handleCheckout = (customer) => {
+        console.log('Checkout customer:', customer.name);
+        // Functionality to be implemented later as per user request
     };
 
     const handleServicePress = (service) => {
@@ -146,13 +160,26 @@ const HomeScreen = ({ navigation }) => {
                         <Text style={[styles.customerName, { color: colors.textPrimary }]}>{selectedCustomer.name}</Text>
                         <Text style={[styles.customerMobile, { color: colors.textSecondary }]}>{selectedCustomer.mobile}</Text>
                     </View>
-                    <TouchableOpacity
-                        style={[styles.historyBtn, { backgroundColor: colors.accent }]}
-                        onPress={openHistory}
-                    >
-                        <Icon name="history" size={18} color="#FFFFFF" />
-                        <Text style={styles.historyBtnText}>History</Text>
-                    </TouchableOpacity>
+                    <View style={styles.headerActions}>
+                        {pendingOrders.length > 0 && (
+                            <TouchableOpacity
+                                style={[styles.actionButton, { backgroundColor: '#F59E0B' }]}
+                                onPress={() => navigation.navigate('Restaurant', { customer: selectedCustomer, openPending: true })}
+                            >
+                                <View style={styles.pendingBadge}>
+                                    <Text style={styles.pendingBadgeText}>{pendingOrders.length}</Text>
+                                </View>
+                                <Icon name="clock-alert" size={18} color="#FFFFFF" />
+                            </TouchableOpacity>
+                        )}
+                        <TouchableOpacity
+                            style={[styles.historyBtn, { backgroundColor: colors.accent }]}
+                            onPress={openHistory}
+                        >
+                            <Icon name="history" size={18} color="#FFFFFF" />
+                            <Text style={styles.historyBtnText}>History</Text>
+                        </TouchableOpacity>
+                    </View>
                 </View>
             </SlideUp>
             <FadeIn delay={200}>
@@ -232,7 +259,14 @@ const HomeScreen = ({ navigation }) => {
             <FlatList
                 data={displayData}
                 keyExtractor={(item) => item.customerId || item.id}
-                renderItem={({ item }) => <CustomerCard customer={item} onPress={handleSelectCustomer} />}
+                renderItem={({ item }) => (
+                    <CustomerCard
+                        customer={item}
+                        onPress={handleSelectCustomer}
+                        showCheckout={searchQuery.length === 0}
+                        onCheckout={handleCheckout}
+                    />
+                )}
                 ListHeaderComponent={renderListHeader}
                 ListEmptyComponent={renderEmptyState}
                 contentContainerStyle={styles.listContent}
@@ -285,6 +319,36 @@ const styles = StyleSheet.create({
         borderRadius: 20,
     },
     historyBtnText: { color: '#FFFFFF', fontSize: 13, fontWeight: '600', marginLeft: 4 },
+    headerActions: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    actionButton: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    pendingBadge: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        backgroundColor: '#EF4444',
+        borderRadius: 10,
+        minWidth: 18,
+        height: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#F59E0B',
+        zIndex: 1,
+    },
+    pendingBadgeText: {
+        color: '#FFFFFF',
+        fontSize: 10,
+        fontWeight: '700',
+    },
 });
 
 export default HomeScreen;

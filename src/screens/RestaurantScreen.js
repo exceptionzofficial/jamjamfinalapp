@@ -23,6 +23,7 @@ import {
     getCombos,
     saveRestaurantOrder,
     getCustomerRestaurantOrders,
+    updateRestaurantOrderPayment,
     formatDateTime,
     addMenuItem,
     updateMenuItem,
@@ -75,6 +76,7 @@ const RestaurantScreen = ({ route, navigation }) => {
     const [showHistoryModal, setShowHistoryModal] = useState(false);
     const [showPaymentModal, setShowPaymentModal] = useState(false);
     const [showMenuManageModal, setShowMenuManageModal] = useState(false);
+    const [showPendingModal, setShowPendingModal] = useState(false);
 
     // Edit/Delete mode states (like Games)
     const [isEditMode, setIsEditMode] = useState(false);
@@ -86,6 +88,9 @@ const RestaurantScreen = ({ route, navigation }) => {
     const [roomNo, setRoomNo] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('');
     const [orderHistory, setOrderHistory] = useState([]);
+    const [pendingOrders, setPendingOrders] = useState([]);
+    const [settlingOrder, setSettlingOrder] = useState(null);
+    const [showSettleQRModal, setShowSettleQRModal] = useState(false);
     const [taxPercent, setTaxPercent] = useState(0); // Tax rate from admin settings
 
     // Menu management states
@@ -125,6 +130,12 @@ const RestaurantScreen = ({ route, navigation }) => {
                 const newIds = comboList.map(c => c.id).join(',');
                 return prevIds !== newIds ? comboList : prev;
             });
+
+            // Fetch pending orders
+            if (customer) {
+                const orders = await getCustomerRestaurantOrders(customer.customerId || customer.id);
+                setPendingOrders(orders.filter(o => o.paymentMethod === 'paylater'));
+            }
         } catch (error) {
             console.error('Error loading menu:', error);
             if (menuItems.length === 0) {
@@ -139,6 +150,11 @@ const RestaurantScreen = ({ route, navigation }) => {
             setTimeout(() => {
                 setIsLoading(false);
                 setRefreshing(false);
+
+                // If openPending param is passed, show the modal after loading
+                if (route.params?.openPending) {
+                    setShowPendingModal(true);
+                }
             }, remainingTime);
         }
     }, [menuItems.length]);
@@ -266,9 +282,16 @@ const RestaurantScreen = ({ route, navigation }) => {
 
             await saveRestaurantOrder(order);
 
+            // Reload pending orders if it was a paylater order
+            if (paymentMethod === 'paylater') {
+                loadData(false);
+            }
+
             Alert.alert(
-                '✅ Order Placed',
-                `Order for ₹${taxInfo.total} has been placed successfully!\n${orderType === 'dining' ? `Table: ${tableNo}` : `Room: ${roomNo}`}\nPayment: ${paymentMethod}${taxInfo.taxAmount > 0 ? `\nTax (${taxInfo.taxPercent}%): ₹${taxInfo.taxAmount}` : ''}`,
+                paymentMethod === 'paylater' ? '⏳ Order Placed (Pay Later)' : '✅ Order Placed',
+                paymentMethod === 'paylater'
+                    ? `Order for ₹${taxInfo.total} has been noted. Please settle payment later.`
+                    : `Order for ₹${taxInfo.total} has been placed successfully!\n${orderType === 'dining' ? `Table: ${tableNo}` : `Room: ${roomNo}`}\nPayment: ${paymentMethod}${taxInfo.taxAmount > 0 ? `\nTax (${taxInfo.taxPercent}%): ₹${taxInfo.taxAmount}` : ''}`,
                 [
                     {
                         text: 'OK',
@@ -572,6 +595,18 @@ const RestaurantScreen = ({ route, navigation }) => {
                         >
                             <Icon name="delete" size={18} color={isDeleteMode ? '#FFFFFF' : '#EF4444'} />
                         </TouchableOpacity>
+                        {/* Pending Indicator */}
+                        {pendingOrders.length > 0 && (
+                            <TouchableOpacity
+                                style={[styles.actionButton, { backgroundColor: '#F59E0B' }]}
+                                onPress={() => setShowPendingModal(true)}
+                            >
+                                <View style={styles.pendingBadge}>
+                                    <Text style={styles.pendingBadgeText}>{pendingOrders.length}</Text>
+                                </View>
+                                <Icon name="clock-alert" size={18} color="#FFFFFF" />
+                            </TouchableOpacity>
+                        )}
                         {/* History button */}
                         <TouchableOpacity
                             style={[styles.historyBtn, { backgroundColor: colors.accent }]}
@@ -917,6 +952,28 @@ const RestaurantScreen = ({ route, navigation }) => {
                                     Cash
                                 </Text>
                             </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.paymentOption,
+                                    {
+                                        backgroundColor: paymentMethod === 'paylater' ? '#F59E0B' : colors.surface,
+                                        borderColor: '#F59E0B',
+                                    }
+                                ]}
+                                onPress={() => setPaymentMethod('paylater')}
+                            >
+                                <Icon
+                                    name="clock-outline"
+                                    size={32}
+                                    color={paymentMethod === 'paylater' ? '#FFFFFF' : '#F59E0B'}
+                                />
+                                <Text style={[
+                                    styles.paymentOptionText,
+                                    { color: paymentMethod === 'paylater' ? '#FFFFFF' : '#F59E0B' }
+                                ]}>
+                                    Pay Later
+                                </Text>
+                            </TouchableOpacity>
                         </View>
 
                         {/* QR Code Display */}
@@ -1046,6 +1103,163 @@ const RestaurantScreen = ({ route, navigation }) => {
                             )}
                         />
                     )}
+                </View>
+            </View>
+        </Modal>
+    );
+
+    // Pending Orders Modal
+    const renderPendingModal = () => (
+        <Modal
+            visible={showPendingModal}
+            animationType="slide"
+            transparent={true}
+            onRequestClose={() => setShowPendingModal(false)}
+        >
+            <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
+                <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+                    <View style={styles.modalHeader}>
+                        <View>
+                            <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Pending Payments</Text>
+                            <Text style={[styles.helperText, { color: colors.textSecondary }]}>
+                                {pendingOrders.length} orders to be settled
+                            </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => setShowPendingModal(false)}>
+                            <Icon name="close" size={24} color={colors.textPrimary} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <FlatList
+                        data={pendingOrders}
+                        keyExtractor={(item) => item.orderId}
+                        contentContainerStyle={{ paddingBottom: 20 }}
+                        renderItem={({ item }) => (
+                            <View style={[styles.historyCard, { backgroundColor: colors.surface, borderColor: '#F59E0B' }]}>
+                                <View style={styles.historyCardHeader}>
+                                    <Text style={[styles.historyDate, { color: colors.textMuted }]}>
+                                        {formatDateTime(item.timestamp)}
+                                    </Text>
+                                    <View style={[styles.historyTypeBadge, { backgroundColor: '#F59E0B' }]}>
+                                        <Text style={styles.historyTypeText}>PENDING</Text>
+                                    </View>
+                                </View>
+                                <View style={styles.historyItems}>
+                                    {item.items?.map((orderItem, idx) => (
+                                        <Text key={idx} style={[styles.historyItemText, { color: colors.textPrimary }]}>
+                                            • {orderItem.name} × {orderItem.quantity}
+                                        </Text>
+                                    ))}
+                                </View>
+                                <View style={styles.historyCardFooter}>
+                                    <Text style={[styles.historyTotal, { color: colors.brand }]}>
+                                        ₹{item.totalAmount}
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                        <TouchableOpacity
+                                            style={[styles.settleBtn, { backgroundColor: '#10B981' }]}
+                                            onPress={() => handleSettleOrder(item, 'Cash')}
+                                        >
+                                            <Icon name="cash" size={16} color="#FFFFFF" />
+                                            <Text style={styles.settleBtnText}>Cash</Text>
+                                        </TouchableOpacity>
+                                        <TouchableOpacity
+                                            style={[styles.settleBtn, { backgroundColor: '#8B5CF6' }]}
+                                            onPress={() => handleSettleOrder(item, 'QR')}
+                                        >
+                                            <Icon name="qrcode" size={16} color="#FFFFFF" />
+                                            <Text style={styles.settleBtnText}>QR</Text>
+                                        </TouchableOpacity>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+                    />
+                </View>
+            </View>
+        </Modal>
+    );
+
+    const handleSettleOrder = async (order, method) => {
+        if (method === 'QR') {
+            setSettlingOrder(order);
+            setShowSettleQRModal(true);
+            return;
+        }
+
+        try {
+            await updateRestaurantOrderPayment(order.orderId, method);
+            Alert.alert('Success', `Order settled with ${method}`);
+            loadData(false);
+            if (pendingOrders.length === 1) {
+                setShowPendingModal(false);
+            }
+        } catch (error) {
+            console.error('Error settling order:', error);
+            Alert.alert('Error', 'Failed to settle order');
+        }
+    };
+
+    const confirmQRSettlement = async () => {
+        if (!settlingOrder) return;
+
+        try {
+            await updateRestaurantOrderPayment(settlingOrder.orderId, 'QR');
+            setShowSettleQRModal(false);
+            setSettlingOrder(null);
+            Alert.alert('Success', 'Order settled with QR');
+            loadData(false);
+            if (pendingOrders.length === 1) {
+                setShowPendingModal(false);
+            }
+        } catch (error) {
+            console.error('Error confirming QR settlement:', error);
+            Alert.alert('Error', 'Failed to confirm settlement');
+        }
+    };
+
+    // Settlement QR Modal
+    const renderSettleQRModal = () => (
+        <Modal
+            visible={showSettleQRModal}
+            animationType="fade"
+            transparent={true}
+            onRequestClose={() => setShowSettleQRModal(false)}
+        >
+            <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.8)' }]}>
+                <View style={[styles.modalContainer, { backgroundColor: colors.background, maxHeight: '70%' }]}>
+                    <View style={styles.modalHeader}>
+                        <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Settle Payment</Text>
+                        <TouchableOpacity onPress={() => setShowSettleQRModal(false)}>
+                            <Icon name="close" size={24} color={colors.textPrimary} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <ScrollView contentContainerStyle={styles.paymentContent}>
+                        <View style={styles.paymentAmountSection}>
+                            <Text style={[styles.paymentTotal, { color: colors.textPrimary }]}>Amount to Settle</Text>
+                            <Text style={[styles.paymentAmount, { color: colors.brand }]}>₹{settlingOrder?.totalAmount}</Text>
+                        </View>
+
+                        <View style={styles.qrCodeSection}>
+                            <View style={[styles.qrCodeContainer, { backgroundColor: '#FFFFFF' }]}>
+                                <QRCode
+                                    value={getUPIString(settlingOrder?.totalAmount || 0)}
+                                    size={200}
+                                />
+                            </View>
+                            <Text style={[styles.qrScanText, { color: colors.textPrimary }]}>Scan to Pay</Text>
+                            <Text style={[styles.qrUpiText, { color: colors.textMuted }]}>UPI: {UPI_ID}</Text>
+                        </View>
+
+                        <TouchableOpacity
+                            style={[styles.proceedButton, { backgroundColor: colors.brand, width: '100%', marginTop: 20 }]}
+                            onPress={confirmQRSettlement}
+                        >
+                            <Icon name="check-circle" size={20} color="#FFFFFF" />
+                            <Text style={styles.proceedButtonText}>Confirm Received</Text>
+                        </TouchableOpacity>
+                    </ScrollView>
                 </View>
             </View>
         </Modal>
@@ -1257,6 +1471,8 @@ const RestaurantScreen = ({ route, navigation }) => {
             {renderCartModal()}
             {renderCheckoutModal()}
             {renderPaymentModal()}
+            {renderPendingModal()}
+            {renderSettleQRModal()}
             {renderHistoryModal()}
             {renderMenuManageModal()}
         </View>
@@ -1913,6 +2129,38 @@ const styles = StyleSheet.create({
         borderRadius: 10,
         justifyContent: 'center',
         alignItems: 'center',
+    },
+    pendingBadge: {
+        position: 'absolute',
+        top: -6,
+        right: -6,
+        backgroundColor: '#EF4444',
+        borderRadius: 10,
+        minWidth: 18,
+        height: 18,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: '#F59E0B',
+        zIndex: 1,
+    },
+    pendingBadgeText: {
+        color: '#FFFFFF',
+        fontSize: 10,
+        fontWeight: '700',
+    },
+    settleBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 6,
+        paddingHorizontal: 10,
+        borderRadius: 6,
+        gap: 4,
+    },
+    settleBtnText: {
+        color: '#FFFFFF',
+        fontSize: 12,
+        fontWeight: '600',
     },
 });
 

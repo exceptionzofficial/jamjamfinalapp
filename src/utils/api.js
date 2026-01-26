@@ -317,6 +317,13 @@ export const updateRestaurantOrderStatus = async (orderId, status) => {
     });
 };
 
+export const updateRestaurantOrderPayment = async (orderId, paymentMethod) => {
+    return await apiCall(`/restaurant-orders/${orderId}/payment`, {
+        method: 'PATCH',
+        body: JSON.stringify({ paymentMethod }),
+    });
+};
+
 // ============= BAKERY ITEMS API (LIVE) =============
 
 export const getBakeryItems = async () => {

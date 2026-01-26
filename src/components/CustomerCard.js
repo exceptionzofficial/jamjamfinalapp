@@ -4,7 +4,7 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useTheme } from '../context/ThemeContext';
 import { formatDateTime } from '../utils/storage';
 
-const CustomerCard = ({ customer, onPress, showCheckin = true }) => {
+const CustomerCard = ({ customer, onPress, onCheckout, showCheckin = true, showCheckout = false }) => {
     const { colors } = useTheme();
 
     return (
@@ -35,7 +35,18 @@ const CustomerCard = ({ customer, onPress, showCheckin = true }) => {
                     </View>
                 )}
             </View>
-            <Icon name="chevron-right" size={24} color={colors.textMuted} />
+
+            {showCheckout ? (
+                <TouchableOpacity
+                    style={[styles.checkoutBtn, { backgroundColor: '#FF6B6B' }]}
+                    onPress={() => onCheckout?.(customer)}
+                >
+                    <Icon name="logout-variant" size={16} color="#FFFFFF" />
+                    <Text style={styles.checkoutText}>Checkout</Text>
+                </TouchableOpacity>
+            ) : (
+                <Icon name="chevron-right" size={24} color={colors.textMuted} />
+            )}
         </TouchableOpacity>
     );
 };
@@ -78,6 +89,19 @@ const styles = StyleSheet.create({
     detail: {
         fontSize: 12,
         marginLeft: 6,
+    },
+    checkoutBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 8,
+        gap: 6,
+    },
+    checkoutText: {
+        color: '#FFFFFF',
+        fontSize: 14,
+        fontWeight: '700',
     },
 });
 
