@@ -28,6 +28,8 @@ import {
     deleteBakeryItem,
     UPI_ID,
     getUPIString,
+    getTaxByService,
+    calculateTax,
 } from '../utils/api';
 import { SlideUp, FadeIn } from '../utils/animations';
 
@@ -79,6 +81,7 @@ const BakeryScreen = ({ route, navigation }) => {
     // Checkout states
     const [paymentMethod, setPaymentMethod] = useState('');
     const [orderHistory, setOrderHistory] = useState([]);
+    const [taxPercent, setTaxPercent] = useState(0); // Tax rate from admin settings
 
     // Menu management states
     const [editingItem, setEditingItem] = useState(null);
@@ -96,7 +99,13 @@ const BakeryScreen = ({ route, navigation }) => {
             setIsLoading(true);
         }
         try {
-            const items = await getBakeryItems();
+            const [items, tax] = await Promise.all([
+                getBakeryItems(),
+                getTaxByService('bakery'),
+            ]);
+
+            // Set tax rate
+            setTaxPercent(tax || 0);
 
             // Smart update
             setMenuItems(prev => {
@@ -162,6 +171,11 @@ const BakeryScreen = ({ route, navigation }) => {
         return cartItems.reduce((sum, item) => sum + item.subtotal, 0);
     }, [cartItems]);
 
+    // Calculate tax breakdown
+    const taxInfo = useMemo(() => {
+        return calculateTax(cartTotal, taxPercent);
+    }, [cartTotal, taxPercent]);
+
     const cartCount = useMemo(() => {
         return Object.values(cart).reduce((sum, qty) => sum + qty, 0);
     }, [cart]);
@@ -209,7 +223,10 @@ const BakeryScreen = ({ route, navigation }) => {
                     quantity: item.quantity,
                     subtotal: item.subtotal,
                 })),
-                totalAmount: cartTotal,
+                subtotal: taxInfo.subtotal,
+                taxPercent: taxInfo.taxPercent,
+                taxAmount: taxInfo.taxAmount,
+                totalAmount: taxInfo.total,
                 paymentMethod,
                 service: 'Bakery',
             };
@@ -218,7 +235,7 @@ const BakeryScreen = ({ route, navigation }) => {
 
             Alert.alert(
                 '✅ Order Confirmed',
-                `Bakery order for ₹${cartTotal} has been confirmed!\nPayment: ${paymentMethod}`,
+                `Bakery order for ₹${taxInfo.total} has been confirmed!\nPayment: ${paymentMethod}${taxInfo.taxAmount > 0 ? `\nTax (${taxInfo.taxPercent}%): ₹${taxInfo.taxAmount}` : ''}`,
                 [
                     {
                         text: 'OK',
@@ -635,9 +652,21 @@ const BakeryScreen = ({ route, navigation }) => {
 
                             <View style={[styles.cartFooter, { borderTopColor: colors.border }]}>
                                 <View style={styles.cartTotal}>
-                                    <Text style={[styles.cartTotalLabel, { color: colors.textPrimary }]}>Total</Text>
+                                    <Text style={[styles.cartTotalLabel, { color: colors.textSecondary }]}>Subtotal</Text>
+                                    <Text style={[styles.cartTotalValue, { color: colors.textPrimary }]}>
+                                        ₹{taxInfo.subtotal}
+                                    </Text>
+                                </View>
+                                {taxInfo.taxPercent > 0 && (
+                                    <View style={styles.cartTotal}>
+                                        <Text style={[styles.cartTotalLabel, { color: colors.textSecondary }]}>Tax ({taxInfo.taxPercent}%)</Text>
+                                        <Text style={[styles.cartTotalValue, { color: colors.textSecondary }]}>₹{taxInfo.taxAmount}</Text>
+                                    </View>
+                                )}
+                                <View style={[styles.cartTotal, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 8 }]}>
+                                    <Text style={[styles.cartTotalLabel, { color: colors.textPrimary, fontWeight: '700' }]}>Total</Text>
                                     <Text style={[styles.cartTotalValue, { color: colors.brand }]}>
-                                        ₹{cartTotal}
+                                        ₹{taxInfo.total}
                                     </Text>
                                 </View>
                                 <TouchableOpacity
@@ -684,7 +713,7 @@ const BakeryScreen = ({ route, navigation }) => {
                                 Total Amount
                             </Text>
                             <Text style={[styles.paymentAmount, { color: colors.brand }]}>
-                                ₹{cartTotal}
+                                ₹{taxInfo.total}
                             </Text>
                         </View>
 
@@ -750,7 +779,7 @@ const BakeryScreen = ({ route, navigation }) => {
                                     />
                                 </View>
                                 <Text style={[styles.qrScanText, { color: colors.textPrimary }]}>
-                                    Scan to Pay ₹{cartTotal}
+                                    Scan to Pay ₹{taxInfo.total}
                                 </Text>
                                 <Text style={[styles.qrUpiText, { color: colors.textMuted }]}>
                                     UPI: {UPI_ID}
@@ -763,7 +792,7 @@ const BakeryScreen = ({ route, navigation }) => {
                             <View style={styles.cashSection}>
                                 <Icon name="cash-multiple" size={64} color="#10B981" />
                                 <Text style={[styles.cashText, { color: colors.textPrimary }]}>
-                                    Collect ₹{cartTotal} from customer
+                                    Collect ₹{taxInfo.total} from customer
                                 </Text>
                             </View>
                         )}
@@ -1058,7 +1087,7 @@ const BakeryScreen = ({ route, navigation }) => {
                                 <Text style={styles.cartBadgeText}>{cartCount}</Text>
                             </View>
                         </View>
-                        <Text style={styles.floatingCartText}>View Cart ₹{cartTotal}</Text>
+                        <Text style={styles.floatingCartText}>View Cart ₹{taxInfo.total}</Text>
                         <Icon name="chevron-right" size={24} color="#FFFFFF" />
                     </View>
                 </TouchableOpacity>

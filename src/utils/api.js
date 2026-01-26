@@ -8,8 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // const API_BASE_URL = 'http://10.0.2.2:3000/api';
 
 // Production URL
-// const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
-const API_BASE_URL = 'https://642786f8dfbb.ngrok-free.app/api';
+const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
+// const API_BASE_URL = 'https://642786f8dfbb.ngrok-free.app/api';
 
 // ============= UPI Payment Configuration =============
 // Change this to your UPI ID - used across all payment screens
@@ -491,4 +491,34 @@ export const savePoolOrder = async (order) => {
 export const getCustomerPoolOrders = async (customerId) => {
     if (!customerId) return [];
     return await apiCall(`/pool-orders/customer/${customerId}`);
+};
+
+// ============= TAX SETTINGS API (LIVE) =============
+
+// Get all tax settings (fetched fresh from backend)
+export const getTaxSettings = async () => {
+    try {
+        return await apiCall('/tax-settings');
+    } catch (error) {
+        console.error('Error fetching tax settings:', error);
+        return [];
+    }
+};
+
+// Get tax rate for a specific service
+export const getTaxByService = async (serviceId) => {
+    try {
+        const settings = await apiCall(`/tax-settings/${serviceId}`);
+        return settings?.taxPercent || 0;
+    } catch (error) {
+        console.error(`Error fetching tax for ${serviceId}:`, error);
+        return 0; // Default to 0% if error
+    }
+};
+
+// Calculate tax breakdown for an amount
+export const calculateTax = (subtotal, taxPercent) => {
+    const taxAmount = Math.round((subtotal * taxPercent) / 100);
+    const total = subtotal + taxAmount;
+    return { subtotal, taxPercent, taxAmount, total };
 };

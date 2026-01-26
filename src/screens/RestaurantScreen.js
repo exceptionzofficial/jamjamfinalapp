@@ -29,6 +29,8 @@ import {
     deleteMenuItem,
     UPI_ID,
     getUPIString,
+    getTaxByService,
+    calculateTax,
 } from '../utils/api';
 import { SlideUp, FadeIn } from '../utils/animations';
 
@@ -84,6 +86,7 @@ const RestaurantScreen = ({ route, navigation }) => {
     const [roomNo, setRoomNo] = useState('');
     const [paymentMethod, setPaymentMethod] = useState('');
     const [orderHistory, setOrderHistory] = useState([]);
+    const [taxPercent, setTaxPercent] = useState(0); // Tax rate from admin settings
 
     // Menu management states
     const [editingItem, setEditingItem] = useState(null);
@@ -101,10 +104,14 @@ const RestaurantScreen = ({ route, navigation }) => {
             setIsLoading(true);
         }
         try {
-            const [items, comboList] = await Promise.all([
+            const [items, comboList, tax] = await Promise.all([
                 getMenuItems(),
                 getCombos(),
+                getTaxByService('restaurant'),
             ]);
+
+            // Set tax rate
+            setTaxPercent(tax || 0);
 
             // Smart update
             setMenuItems(prev => {
@@ -180,6 +187,11 @@ const RestaurantScreen = ({ route, navigation }) => {
         return cartItems.reduce((sum, item) => sum + item.subtotal, 0);
     }, [cartItems]);
 
+    // Calculate tax breakdown
+    const taxInfo = useMemo(() => {
+        return calculateTax(cartTotal, taxPercent);
+    }, [cartTotal, taxPercent]);
+
     const cartCount = useMemo(() => {
         return Object.values(cart).reduce((sum, qty) => sum + qty, 0);
     }, [cart]);
@@ -241,7 +253,10 @@ const RestaurantScreen = ({ route, navigation }) => {
                     quantity: item.quantity,
                     subtotal: item.subtotal,
                 })),
-                totalAmount: cartTotal,
+                subtotal: taxInfo.subtotal,
+                taxPercent: taxInfo.taxPercent,
+                taxAmount: taxInfo.taxAmount,
+                totalAmount: taxInfo.total,
                 orderType,
                 tableNo: orderType === 'dining' ? tableNo : null,
                 roomNo: orderType === 'room' ? roomNo : null,
@@ -253,7 +268,7 @@ const RestaurantScreen = ({ route, navigation }) => {
 
             Alert.alert(
                 '✅ Order Placed',
-                `Order for ₹${cartTotal} has been placed successfully!\n${orderType === 'dining' ? `Table: ${tableNo}` : `Room: ${roomNo}`}\nPayment: ${paymentMethod}`,
+                `Order for ₹${taxInfo.total} has been placed successfully!\n${orderType === 'dining' ? `Table: ${tableNo}` : `Room: ${roomNo}`}\nPayment: ${paymentMethod}${taxInfo.taxAmount > 0 ? `\nTax (${taxInfo.taxPercent}%): ₹${taxInfo.taxAmount}` : ''}`,
                 [
                     {
                         text: 'OK',
@@ -672,8 +687,18 @@ const RestaurantScreen = ({ route, navigation }) => {
 
                             <View style={[styles.cartFooter, { borderTopColor: colors.border }]}>
                                 <View style={styles.cartTotal}>
-                                    <Text style={[styles.cartTotalLabel, { color: colors.textPrimary }]}>Total</Text>
-                                    <Text style={[styles.cartTotalValue, { color: colors.brand }]}>₹{cartTotal}</Text>
+                                    <Text style={[styles.cartTotalLabel, { color: colors.textSecondary }]}>Subtotal</Text>
+                                    <Text style={[styles.cartTotalValue, { color: colors.textPrimary }]}>₹{taxInfo.subtotal}</Text>
+                                </View>
+                                {taxInfo.taxPercent > 0 && (
+                                    <View style={styles.cartTotal}>
+                                        <Text style={[styles.cartTotalLabel, { color: colors.textSecondary }]}>Tax ({taxInfo.taxPercent}%)</Text>
+                                        <Text style={[styles.cartTotalValue, { color: colors.textSecondary }]}>₹{taxInfo.taxAmount}</Text>
+                                    </View>
+                                )}
+                                <View style={[styles.cartTotal, { borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 8, marginTop: 8 }]}>
+                                    <Text style={[styles.cartTotalLabel, { color: colors.textPrimary, fontWeight: '700' }]}>Total</Text>
+                                    <Text style={[styles.cartTotalValue, { color: colors.brand }]}>₹{taxInfo.total}</Text>
                                 </View>
                                 <TouchableOpacity
                                     style={[styles.checkoutButton, { backgroundColor: colors.brand }]}
@@ -788,8 +813,18 @@ const RestaurantScreen = ({ route, navigation }) => {
                                 </View>
                             ))}
                             <View style={[styles.summaryTotal, { borderTopColor: colors.border }]}>
-                                <Text style={[styles.summaryTotalLabel, { color: colors.textPrimary }]}>Total</Text>
-                                <Text style={[styles.summaryTotalValue, { color: colors.brand }]}>₹{cartTotal}</Text>
+                                <Text style={[styles.summaryTotalLabel, { color: colors.textSecondary }]}>Subtotal</Text>
+                                <Text style={[styles.summaryTotalValue, { color: colors.textPrimary }]}>₹{taxInfo.subtotal}</Text>
+                            </View>
+                            {taxInfo.taxPercent > 0 && (
+                                <View style={styles.summaryItem}>
+                                    <Text style={[styles.summaryTotalLabel, { color: colors.textSecondary }]}>Tax ({taxInfo.taxPercent}%)</Text>
+                                    <Text style={[styles.summaryTotalValue, { color: colors.textSecondary }]}>₹{taxInfo.taxAmount}</Text>
+                                </View>
+                            )}
+                            <View style={[styles.summaryItem, { marginTop: 8 }]}>
+                                <Text style={[styles.summaryTotalLabel, { color: colors.textPrimary, fontWeight: '700' }]}>Total</Text>
+                                <Text style={[styles.summaryTotalValue, { color: colors.brand, fontWeight: '700' }]}>₹{taxInfo.total}</Text>
                             </View>
                         </View>
                     </ScrollView>
@@ -832,8 +867,13 @@ const RestaurantScreen = ({ route, navigation }) => {
                                 Total Amount
                             </Text>
                             <Text style={[styles.paymentAmount, { color: colors.brand }]}>
-                                ₹{cartTotal}
+                                ₹{taxInfo.total}
                             </Text>
+                            {taxInfo.taxPercent > 0 && (
+                                <Text style={[styles.paymentTaxInfo, { color: colors.textSecondary }]}>
+                                    (Includes {taxInfo.taxPercent}% tax: ₹{taxInfo.taxAmount})
+                                </Text>
+                            )}
                         </View>
 
                         <Text style={[styles.checkoutLabel, { color: colors.textPrimary, marginTop: 16 }]}>
@@ -891,14 +931,14 @@ const RestaurantScreen = ({ route, navigation }) => {
                             <View style={styles.qrCodeSection}>
                                 <View style={[styles.qrCodeContainer, { backgroundColor: '#FFFFFF' }]}>
                                     <QRCode
-                                        value={getUPIString()}
+                                        value={getUPIString(taxInfo.total)}
                                         size={200}
                                         backgroundColor="#FFFFFF"
                                         color="#000000"
                                     />
                                 </View>
                                 <Text style={[styles.qrScanText, { color: colors.textPrimary }]}>
-                                    Scan to Pay ₹{cartTotal}
+                                    Scan to Pay ₹{taxInfo.total}
                                 </Text>
                                 <Text style={[styles.qrUpiText, { color: colors.textMuted }]}>
                                     UPI: {UPI_ID}
@@ -911,7 +951,7 @@ const RestaurantScreen = ({ route, navigation }) => {
                             <View style={styles.cashSection}>
                                 <Icon name="cash-multiple" size={64} color="#10B981" />
                                 <Text style={[styles.cashText, { color: colors.textPrimary }]}>
-                                    Collect ₹{cartTotal} from customer
+                                    Collect ₹{taxInfo.total} from customer
                                 </Text>
                             </View>
                         )}
@@ -1206,7 +1246,7 @@ const RestaurantScreen = ({ route, navigation }) => {
                                 <Text style={styles.cartBadgeText}>{cartCount}</Text>
                             </View>
                         </View>
-                        <Text style={styles.floatingCartText}>View Cart • ₹{cartTotal}</Text>
+                        <Text style={styles.floatingCartText}>View Cart • ₹{taxInfo.total}</Text>
                         <Icon name="chevron-right" size={24} color="#FFFFFF" />
                     </View>
                 </TouchableOpacity>
