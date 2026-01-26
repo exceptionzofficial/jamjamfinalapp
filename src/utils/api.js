@@ -522,3 +522,48 @@ export const calculateTax = (subtotal, taxPercent) => {
     const total = subtotal + taxAmount;
     return { subtotal, taxPercent, taxAmount, total };
 };
+
+// ============= CENTRALIZED HISTORY API =============
+
+export const getCustomerFullHistory = async (customerId) => {
+    if (!customerId) return [];
+
+    try {
+        // Fetch all service orders in parallel
+        const [
+            games,
+            restaurant,
+            bakery,
+            juice,
+            massage,
+            pool
+        ] = await Promise.all([
+            getCustomerBookings(customerId).catch(() => []),
+            getCustomerRestaurantOrders(customerId).catch(() => []),
+            getCustomerBakeryOrders(customerId).catch(() => []),
+            getCustomerJuiceOrders(customerId).catch(() => []),
+            getCustomerMassageOrders(customerId).catch(() => []),
+            getCustomerPoolOrders(customerId).catch(() => []),
+        ]);
+
+        // Add service property to each order if missing and normalize
+        const allOrders = [
+            ...games.map(o => ({ ...o, service: 'Games', type: 'games' })),
+            ...restaurant.map(o => ({ ...o, service: 'Restaurant', type: 'restaurant' })),
+            ...bakery.map(o => ({ ...o, service: 'Bakery', type: 'bakery' })),
+            ...juice.map(o => ({ ...o, service: 'Juice Bar', type: 'juice' })),
+            ...massage.map(o => ({ ...o, service: 'Massage', type: 'massage' })),
+            ...pool.map(o => ({ ...o, service: 'Pool', type: 'pool' })),
+        ];
+
+        // Sort by timestamp descending (newest first)
+        return allOrders.sort((a, b) => {
+            const timeA = new Date(a.timestamp || a.orderTime || a.createdAt);
+            const timeB = new Date(b.timestamp || b.orderTime || b.createdAt);
+            return timeB - timeA;
+        });
+    } catch (error) {
+        console.error('Error fetching full customer history:', error);
+        throw error;
+    }
+};

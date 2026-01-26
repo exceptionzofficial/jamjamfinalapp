@@ -398,6 +398,13 @@ const PoolScreen = ({ route, navigation }) => {
                             <Text style={[styles.customerName, { color: colors.textPrimary }]}>{customer.name}</Text>
                             <Text style={[styles.customerMobile, { color: colors.textSecondary }]}>{customer.mobile}</Text>
                         </View>
+                        <TouchableOpacity
+                            style={[styles.historyBtn, { backgroundColor: colors.accent }]}
+                            onPress={() => navigation.navigate('CustomerHistory', { customer })}
+                        >
+                            <Icon name="history" size={18} color="#FFFFFF" />
+                            <Text style={styles.historyBtnText}>History</Text>
+                        </TouchableOpacity>
                     </View>
                 </SlideUp>
             )}
@@ -818,6 +825,19 @@ const styles = StyleSheet.create({
     customerMobile: {
         fontSize: 14,
         marginTop: 2,
+    },
+    historyBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingHorizontal: 12,
+        borderRadius: 20,
+    },
+    historyBtnText: {
+        color: '#FFFFFF',
+        fontSize: 13,
+        fontWeight: '600',
+        marginLeft: 4,
     },
     sectionHeader: {
         flexDirection: 'row',

@@ -254,16 +254,9 @@ const BakeryScreen = ({ route, navigation }) => {
         }
     };
 
-    // Load order history
-    const openHistory = async () => {
-        try {
-            const history = await getCustomerBakeryOrders(customer.customerId || customer.id);
-            setOrderHistory(history);
-            setShowHistoryModal(true);
-        } catch (error) {
-            console.error('Error loading history:', error);
-            Alert.alert('Error', 'Could not load order history');
-        }
+    // History functions
+    const openHistory = () => {
+        navigation.navigate('CustomerHistory', { customer });
     };
 
     // Menu Management Functions

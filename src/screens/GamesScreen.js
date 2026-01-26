@@ -359,16 +359,9 @@ const GamesScreen = ({ route, navigation }) => {
     }, []);
 
     // History functions
-    const openHistory = useCallback(async () => {
-        const customerId = customer?.customerId || customer?.id;
-        if (!customerId) {
-            Alert.alert('No Customer', 'Select a customer to view history');
-            return;
-        }
-        const bookings = await getCustomerBookings(customerId);
-        setCustomerBookings(bookings);
-        setShowHistoryModal(true);
-    }, [customer]);
+    const openHistory = useCallback(() => {
+        navigation.navigate('CustomerHistory', { customer });
+    }, [customer, navigation]);
 
     const closeHistoryModal = useCallback(() => {
         setShowHistoryModal(false);
