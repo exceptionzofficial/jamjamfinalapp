@@ -16,7 +16,7 @@ import LottieView from 'lottie-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
-import { getGames, addGame, updateGame, deleteGame, saveBooking, getCustomerBookings, formatDateTime, UPI_ID, getUPIString } from '../utils/api';
+import { getGames, addGame, updateGame, deleteGame, saveBooking, getCustomerBookings, formatDateTime, UPI_ID, getUPIString, getTaxByService, calculateTax } from '../utils/api';
 import { SlideUp, FadeIn } from '../utils/animations';
 
 // Lottie animation
@@ -62,6 +62,7 @@ const GamesScreen = ({ route, navigation }) => {
     const [gameCoins, setGameCoins] = useState('');
     const [gameMinutes, setGameMinutes] = useState('');
     const [gameRate, setGameRate] = useState('');
+    const [taxPercent, setTaxPercent] = useState(0); // Tax rate from admin settings
 
     // Selected games for booking with coin counts
     const [selectedGames, setSelectedGames] = useState({});
@@ -74,7 +75,14 @@ const GamesScreen = ({ route, navigation }) => {
             setIsLoading(true);
         }
         try {
-            const freshGames = await getGames();
+            const [freshGames, tax] = await Promise.all([
+                getGames(),
+                getTaxByService('games'),
+            ]);
+
+            // Set tax rate
+            setTaxPercent(tax || 0);
+
             // Only update if data has actually changed (compare by ID list)
             setGames(prev => {
                 const prevIds = prev.map(g => g.id || g.gameId).join(',');
@@ -273,6 +281,12 @@ const GamesScreen = ({ route, navigation }) => {
         return { coins, amount };
     }, [selectedGames]);
 
+    // Calculate tax breakdown
+    const taxInfo = useMemo(() => {
+        return calculateTax(totals.amount, taxPercent);
+    }, [totals.amount, taxPercent]);
+
+    const hasSelection = Object.keys(selectedGames).length > 0;
     const handleConfirmBooking = useCallback(() => {
         const items = Object.values(selectedGames);
         if (items.length === 0) {
@@ -310,7 +324,10 @@ const GamesScreen = ({ route, navigation }) => {
                 customerName: customer?.name || 'Walk-in',
                 customerMobile: customer?.mobile || '',
                 items: bookingItems,
-                totalAmount: totals.amount,
+                subtotal: taxInfo.subtotal,
+                taxPercent: taxInfo.taxPercent,
+                taxAmount: taxInfo.taxAmount,
+                totalAmount: taxInfo.total,
                 totalCoins: totals.coins,
                 paymentMethod: paymentType,
                 service: 'Games',
@@ -321,7 +338,7 @@ const GamesScreen = ({ route, navigation }) => {
 
         Alert.alert(
             'Payment Successful',
-            `Payment of ₹${totals.amount} received via ${paymentType}.\n\nBooking confirmed for ${customer?.name || 'Walk-in'}!`,
+            `Payment of ₹${taxInfo.total} received via ${paymentType}${taxInfo.taxAmount > 0 ? `\n(Includes ${taxInfo.taxPercent}% tax: ₹${taxInfo.taxAmount})` : ''}.\n\nBooking confirmed for ${customer?.name || 'Walk-in'}!`,
             [
                 {
                     text: 'Done',
@@ -682,7 +699,7 @@ const GamesScreen = ({ route, navigation }) => {
                         </Text>
                         <View style={styles.totalRow}>
                             <Text style={[styles.totalText, { color: colors.textPrimary }]}>Total: </Text>
-                            <Text style={[styles.totalAmount, { color: colors.brand }]}>₹{totals.amount}</Text>
+                            <Text style={[styles.totalAmount, { color: colors.brand }]}>₹{taxInfo.total}</Text>
                         </View>
                     </View>
                     <TouchableOpacity
@@ -851,11 +868,25 @@ const GamesScreen = ({ route, navigation }) => {
                             {/* Amount Display */}
                             <View style={[styles.amountCard, { backgroundColor: colors.brand }]}>
                                 <Text style={styles.amountLabel}>Total Amount</Text>
-                                <Text style={styles.amountValue}>₹{totals.amount}</Text>
+                                <Text style={styles.amountValue}>₹{taxInfo.total}</Text>
                                 <Text style={styles.amountCustomer}>
                                     {customer?.name || 'Walk-in Customer'}
                                 </Text>
                             </View>
+
+                            {/* Tax Info Display */}
+                            {taxInfo.taxPercent > 0 && (
+                                <View style={[styles.summaryCard, { backgroundColor: colors.surfaceLight, borderColor: colors.border, marginTop: 10, padding: 10 }]}>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 }}>
+                                        <Text style={{ color: colors.textSecondary }}>Subtotal</Text>
+                                        <Text style={{ color: colors.textPrimary }}>₹{taxInfo.subtotal}</Text>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                                        <Text style={{ color: colors.textSecondary }}>Tax ({taxInfo.taxPercent}%)</Text>
+                                        <Text style={{ color: colors.textPrimary }}>₹{taxInfo.taxAmount}</Text>
+                                    </View>
+                                </View>
+                            )}
 
                             {/* Booking Summary */}
                             <View style={[styles.summaryCard, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
@@ -909,13 +940,13 @@ const GamesScreen = ({ route, navigation }) => {
                             {selectedPaymentMethod === 'qr' && (
                                 <View style={[styles.qrCodeCard, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
                                     <QRCode
-                                        value={getUPIString(totals.amount)}
+                                        value={getUPIString(taxInfo.total)}
                                         size={180}
                                         backgroundColor="#FFFFFF"
                                         color="#000000"
                                     />
                                     <Text style={styles.qrHint}>
-                                        Scan to Pay ₹{totals.amount}
+                                        Scan to Pay ₹{taxInfo.total}
                                     </Text>
                                     <Text style={styles.qrNote}>
                                         UPI: {UPI_ID}

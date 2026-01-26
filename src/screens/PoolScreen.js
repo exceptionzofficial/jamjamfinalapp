@@ -16,7 +16,7 @@ import LottieView from 'lottie-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
-import { getPoolTypes, addPoolType, updatePoolType, deletePoolType, savePoolOrder, UPI_ID, getUPIString } from '../utils/api';
+import { getPoolTypes, addPoolType, updatePoolType, deletePoolType, savePoolOrder, UPI_ID, getUPIString, getTaxByService, calculateTax } from '../utils/api';
 import { SlideUp, FadeIn } from '../utils/animations';
 
 // Lottie animation
@@ -58,6 +58,7 @@ const PoolScreen = ({ route, navigation }) => {
 
     // Payment state
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+    const [taxPercent, setTaxPercent] = useState(0); // Tax rate from admin settings
 
     // Load pool types
     const loadPoolTypes = useCallback(async (showLoading = true) => {
@@ -67,8 +68,12 @@ const PoolScreen = ({ route, navigation }) => {
             setIsLoading(true);
         }
         try {
-            const types = await getPoolTypes();
+            const [types, tax] = await Promise.all([
+                getPoolTypes(),
+                getTaxByService('pool'),
+            ]);
             setPoolTypes(types);
+            setTaxPercent(tax || 0);
         } catch (error) {
             console.error('Error loading pool types:', error);
             if (poolTypes.length === 0) {
@@ -96,13 +101,16 @@ const PoolScreen = ({ route, navigation }) => {
 
     // Calculate total from all pool type quantities
     const totalAmount = useMemo(() => {
-        let total = 0;
-        poolTypes.forEach(type => {
+        return poolTypes.reduce((sum, type) => {
             const qty = poolQuantities[type.id] || 0;
-            total += type.price * qty;
-        });
-        return total;
+            return sum + (qty * type.price);
+        }, 0);
     }, [poolTypes, poolQuantities]);
+
+    // Calculate tax breakdown
+    const taxInfo = useMemo(() => {
+        return calculateTax(totalAmount, taxPercent);
+    }, [totalAmount, taxPercent]);
 
     // Check if any pool type is selected
     const hasSelection = useMemo(() => {
@@ -282,14 +290,17 @@ const PoolScreen = ({ route, navigation }) => {
                 customerMobile: customer?.mobile || '',
                 items: orderItems,
                 preferredTime: preferredTime.trim() || null,
-                totalAmount,
+                subtotal: taxInfo.subtotal,
+                taxPercent: taxInfo.taxPercent,
+                taxAmount: taxInfo.taxAmount,
+                totalAmount: taxInfo.total,
                 paymentMethod: paymentType,
                 service: 'Pool',
             });
 
             Alert.alert(
                 '✅ Booking Confirmed',
-                `Pool booking confirmed!\n\n${selectionSummary}\nTotal: ₹${totalAmount}\nPayment: ${paymentType}`,
+                `Pool booking confirmed!\n\n${selectionSummary}\nTotal: ₹${taxInfo.total}\nPayment: ${paymentType}${taxInfo.taxAmount > 0 ? `\nTax (${taxInfo.taxPercent}%): ₹${taxInfo.taxAmount}` : ''}`,
                 [
                     {
                         text: 'Done',
@@ -438,8 +449,18 @@ const PoolScreen = ({ route, navigation }) => {
                             </View>
                         ) : null}
                         <View style={[styles.summaryTotal, { borderTopColor: colors.border }]}>
-                            <Text style={[styles.summaryTotalLabel, { color: colors.textPrimary }]}>Total</Text>
-                            <Text style={[styles.summaryTotalValue, { color: colors.brand }]}>₹{totalAmount}</Text>
+                            <Text style={[styles.summaryTotalLabel, { color: colors.textSecondary }]}>Subtotal</Text>
+                            <Text style={[styles.summaryTotalValue, { color: colors.textPrimary }]}>₹{taxInfo.subtotal}</Text>
+                        </View>
+                        {taxInfo.taxPercent > 0 && (
+                            <View style={[styles.summaryTotal, { marginTop: 4 }]}>
+                                <Text style={[styles.summaryTotalLabel, { color: colors.textSecondary }]}>Tax ({taxInfo.taxPercent}%)</Text>
+                                <Text style={[styles.summaryTotalValue, { color: colors.textSecondary }]}>₹{taxInfo.taxAmount}</Text>
+                            </View>
+                        )}
+                        <View style={[styles.summaryTotal, { marginTop: 8 }]}>
+                            <Text style={[styles.summaryTotalLabel, { color: colors.textPrimary, fontWeight: '700' }]}>Total</Text>
+                            <Text style={[styles.summaryTotalValue, { color: colors.brand }]}>₹{taxInfo.total}</Text>
                         </View>
                     </View>
 
@@ -474,7 +495,7 @@ const PoolScreen = ({ route, navigation }) => {
                         >
                             <Icon name="qrcode-scan" size={28} color={selectedPaymentMethod === 'qr' ? '#FFFFFF' : '#8B5CF6'} />
                             <Text style={[styles.paymentOptionText, { color: selectedPaymentMethod === 'qr' ? '#FFFFFF' : colors.textPrimary }]}>
-                                UPI/QR
+                                UPI/QR (₹{taxInfo.total})
                             </Text>
                         </TouchableOpacity>
                     </View>
@@ -482,8 +503,8 @@ const PoolScreen = ({ route, navigation }) => {
                     {/* QR Code */}
                     {selectedPaymentMethod === 'qr' && (
                         <View style={styles.qrContainer}>
-                            <QRCode value={getUPIString(totalAmount)} size={150} backgroundColor="white" />
-                            <Text style={[styles.qrHint, { color: colors.textMuted }]}>Scan to pay ₹{totalAmount}</Text>
+                            <QRCode value={getUPIString(taxInfo.total)} size={150} backgroundColor="white" />
+                            <Text style={[styles.qrScanText, { color: colors.textPrimary }]}>Scan to pay ₹{taxInfo.total}</Text>
                         </View>
                     )}
 
@@ -710,7 +731,7 @@ const PoolScreen = ({ route, navigation }) => {
                         <Text style={[styles.totalLabel, { color: colors.textSecondary }]} numberOfLines={1}>
                             {hasSelection ? selectionSummary : 'Add people to pool types'}
                         </Text>
-                        <Text style={[styles.totalAmount, { color: colors.brand }]}>₹{totalAmount}</Text>
+                        <Text style={[styles.totalAmount, { color: colors.brand }]}>₹{taxInfo.total}</Text>
                     </View>
                     <TouchableOpacity
                         style={[styles.bookBtn, { backgroundColor: hasSelection ? colors.brand : colors.border }]}
