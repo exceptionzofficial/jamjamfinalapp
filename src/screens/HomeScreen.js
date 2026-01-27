@@ -7,6 +7,10 @@ import {
     TouchableOpacity,
     Dimensions,
     RefreshControl,
+    Alert,
+    Modal,
+    ActivityIndicator,
+    ScrollView,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../components/Header';
@@ -15,7 +19,15 @@ import CustomerCard from '../components/CustomerCard';
 import ServiceCard, { SERVICES } from '../components/ServiceCard';
 import BannerCarousel from '../components/BannerCarousel';
 import { useTheme } from '../context/ThemeContext';
-import { getRecentCustomers, searchCustomers, addToRecent, getCustomerRestaurantOrders } from '../utils/api';
+import {
+    getRecentCustomers,
+    searchCustomers,
+    addToRecent,
+    getCustomerRestaurantOrders,
+    getCustomerFullHistory,
+    checkoutCustomer,
+    formatDateTime
+} from '../utils/api';
 import { FadeIn, SlideUp, StaggerItem } from '../utils/animations';
 
 const { width } = Dimensions.get('window');
@@ -30,6 +42,10 @@ const HomeScreen = ({ navigation }) => {
     const [pendingOrders, setPendingOrders] = useState([]);
     const [refreshing, setRefreshing] = useState(false);
     const [isSearching, setIsSearching] = useState(false);
+    const [showCheckoutModal, setShowCheckoutModal] = useState(false);
+    const [isCheckingOut, setIsCheckingOut] = useState(false);
+    const [invoiceData, setInvoiceData] = useState(null);
+    const [checkoutCustomerData, setCheckoutCustomerData] = useState(null);
 
     // Debounce timer ref
     const searchTimeoutRef = useRef(null);
@@ -118,9 +134,77 @@ const HomeScreen = ({ navigation }) => {
         setSelectedCustomer(null);
     };
 
-    const handleCheckout = (customer) => {
-        console.log('Checkout customer:', customer.name);
-        // Functionality to be implemented later as per user request
+    const handleCheckout = async (customer) => {
+        if (customer.status === 'checked-out') {
+            Alert.alert('Info', 'Customer is already checked out.');
+            return;
+        }
+
+        setCheckoutCustomerData(customer);
+        setIsCheckingOut(true);
+
+        try {
+            const history = await getCustomerFullHistory(customer.customerId || customer.id);
+
+            // Check for pending pay-later orders
+            const pendingPayLater = history.filter(order => order.paymentMethod === 'paylater');
+
+            if (pendingPayLater.length > 0) {
+                Alert.alert(
+                    'Pending Payments',
+                    `This customer has ${pendingPayLater.length} unpaid 'Pay Later' order(s). Please settle them in the respective service sections before checking out.`,
+                    [{ text: 'OK' }]
+                );
+                setIsCheckingOut(false);
+                return;
+            }
+
+            // Aggregate totals by service
+            const totalsByService = history.reduce((acc, order) => {
+                const service = order.service || 'Other';
+                if (!acc[service]) {
+                    acc[service] = { amount: 0, tax: 0 };
+                }
+                acc[service].amount += (order.totalAmount || 0);
+                acc[service].tax += (order.taxAmount || 0);
+                return acc;
+            }, {});
+
+            const grandTotal = history.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
+            const totalTax = history.reduce((sum, order) => sum + (order.taxAmount || 0), 0);
+
+            setInvoiceData({
+                services: totalsByService,
+                grandTotal,
+                totalTax,
+                allOrders: history,
+                checkoutDate: new Date().toISOString()
+            });
+
+            setShowCheckoutModal(true);
+        } catch (error) {
+            console.error('Error during checkout fetching:', error);
+            Alert.alert('Error', 'Failed to fetch customer history. Please try again.');
+        } finally {
+            setIsCheckingOut(false);
+        }
+    };
+
+    const confirmCheckout = async () => {
+        if (!checkoutCustomerData) return;
+
+        try {
+            setIsCheckingOut(true);
+            await checkoutCustomer(checkoutCustomerData.customerId || checkoutCustomerData.id);
+            setShowCheckoutModal(false);
+            Alert.alert('Success', 'Customer checked out successfully!');
+            loadRecentCustomers();
+        } catch (error) {
+            console.error('Error during checkout confirmation:', error);
+            Alert.alert('Error', 'Failed to checkout customer. Please try again.');
+        } finally {
+            setIsCheckingOut(false);
+        }
     };
 
     const handleServicePress = (service) => {
@@ -191,6 +275,114 @@ const HomeScreen = ({ navigation }) => {
         </>
     );
 
+    const renderCheckoutModal = () => {
+        if (!invoiceData || !checkoutCustomerData) return (
+            <Modal visible={isCheckingOut && !showCheckoutModal} transparent={true}>
+                <View style={styles.fullScreenLoading}>
+                    <ActivityIndicator size="large" color={colors.accent} />
+                    <Text style={[styles.loadingText, { color: '#FFFFFF' }]}>Preparing Invoice...</Text>
+                </View>
+            </Modal>
+        );
+
+        return (
+            <Modal
+                visible={showCheckoutModal}
+                transparent={true}
+                animationType="fade"
+                onRequestClose={() => setShowCheckoutModal(false)}
+            >
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.invoiceContainer, { backgroundColor: '#FFFFFF' }]}>
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            <View style={styles.receiptHeader}>
+                                <Text style={styles.receiptBrand}>SRI KALKI JAM JAM</Text>
+                                <Text style={styles.receiptSubtext}>Resorts & Theme Park</Text>
+                                <View style={styles.receiptDivider} />
+                                <Text style={styles.receiptTitle}>FINAL INVOICE</Text>
+                            </View>
+
+                            <View style={styles.receiptSection}>
+                                <View style={styles.receiptRow}>
+                                    <Text style={styles.receiptLabel}>Customer:</Text>
+                                    <Text style={styles.receiptValue}>{checkoutCustomerData.name}</Text>
+                                </View>
+                                <View style={styles.receiptRow}>
+                                    <Text style={styles.receiptLabel}>ID:</Text>
+                                    <Text style={styles.receiptValue}>{checkoutCustomerData.customerId || checkoutCustomerData.id}</Text>
+                                </View>
+                                <View style={styles.receiptRow}>
+                                    <Text style={styles.receiptLabel}>Check-in:</Text>
+                                    <Text style={styles.receiptValue}>{formatDateTime(checkoutCustomerData.checkinTime)}</Text>
+                                </View>
+                                <View style={styles.receiptRow}>
+                                    <Text style={styles.receiptLabel}>Check-out:</Text>
+                                    <Text style={styles.receiptValue}>{formatDateTime(invoiceData.checkoutDate)}</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.receiptDivider} />
+
+                            <View style={styles.receiptSection}>
+                                <View style={[styles.receiptRow, styles.receiptHeaderRow]}>
+                                    <Text style={styles.receiptColMain}>SERVICE</Text>
+                                    <Text style={styles.receiptColAmount}>AMOUNT</Text>
+                                </View>
+                                {Object.entries(invoiceData.services).map(([service, data], index) => (
+                                    <View key={index} style={styles.receiptRow}>
+                                        <Text style={styles.receiptColMain}>{service}</Text>
+                                        <Text style={styles.receiptColAmount}>₹{data.amount}</Text>
+                                    </View>
+                                ))}
+                            </View>
+
+                            <View style={styles.receiptDivider} />
+
+                            <View style={styles.receiptSection}>
+                                <View style={styles.receiptRow}>
+                                    <Text style={styles.receiptLabel}>Total Tax:</Text>
+                                    <Text style={styles.receiptValue}>₹{invoiceData.totalTax}</Text>
+                                </View>
+                                <View style={[styles.receiptRow, styles.grandTotalRow]}>
+                                    <Text style={styles.grandTotalLabel}>GRAND TOTAL</Text>
+                                    <Text style={styles.grandTotalValue}>₹{invoiceData.grandTotal}</Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.receiptDivider} />
+
+                            <Text style={styles.receiptFooter}>Thank you for visiting!</Text>
+                            <Text style={styles.receiptFooterSmall}>Please show this receipt at the exit gate.</Text>
+                        </ScrollView>
+
+                        <View style={styles.modalActions}>
+                            <TouchableOpacity
+                                style={[styles.modalBtn, styles.cancelBtn]}
+                                onPress={() => setShowCheckoutModal(false)}
+                            >
+                                <Text style={styles.cancelBtnText}>Close</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.modalBtn, styles.confirmBtn]}
+                                onPress={confirmCheckout}
+                                disabled={isCheckingOut}
+                            >
+                                {isCheckingOut ? (
+                                    <ActivityIndicator size="small" color="#FFFFFF" />
+                                ) : (
+                                    <>
+                                        <Icon name="check-circle" size={18} color="#FFFFFF" />
+                                        <Text style={styles.confirmBtnText}>Confirm</Text>
+                                    </>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+        );
+    };
+
     const renderServiceItem = ({ item: service, index }) => (
         <StaggerItem index={index} delay={80} style={styles.serviceGridItem}>
             <ServiceCard service={service} onPress={handleServicePress} />
@@ -242,6 +434,7 @@ const HomeScreen = ({ navigation }) => {
                     columnWrapperStyle={styles.columnWrapper}
                     showsVerticalScrollIndicator={false}
                 />
+                {renderCheckoutModal()}
             </View>
         );
     }
@@ -275,6 +468,7 @@ const HomeScreen = ({ navigation }) => {
                     <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.accent]} />
                 }
             />
+            {renderCheckoutModal()}
         </View>
     );
 };
@@ -348,6 +542,156 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 10,
         fontWeight: '700',
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    invoiceContainer: {
+        width: '100%',
+        maxWidth: 400,
+        maxHeight: '85%',
+        borderRadius: 20,
+        padding: 20,
+        elevation: 10,
+    },
+    receiptHeader: {
+        alignItems: 'center',
+        marginBottom: 15,
+    },
+    receiptBrand: {
+        fontSize: 22,
+        fontWeight: '900',
+        color: '#000000',
+        letterSpacing: 1,
+    },
+    receiptSubtext: {
+        fontSize: 12,
+        color: '#333333',
+        marginBottom: 10,
+    },
+    receiptDivider: {
+        width: '100%',
+        borderBottomWidth: 1,
+        borderBottomColor: '#000000',
+        borderStyle: 'dashed',
+        marginVertical: 12,
+    },
+    receiptTitle: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: '#000000',
+        textDecorationLine: 'underline',
+    },
+    receiptSection: {
+        marginBottom: 5,
+    },
+    receiptRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginBottom: 6,
+    },
+    receiptLabel: {
+        fontSize: 13,
+        color: '#333333',
+        fontWeight: '500',
+    },
+    receiptValue: {
+        fontSize: 13,
+        color: '#000000',
+        fontWeight: '600',
+        textAlign: 'right',
+        flex: 1,
+        marginLeft: 10,
+    },
+    receiptHeaderRow: {
+        marginBottom: 10,
+    },
+    receiptColMain: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#000000',
+        flex: 1,
+    },
+    receiptColAmount: {
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#000000',
+        width: 80,
+        textAlign: 'right',
+    },
+    grandTotalRow: {
+        marginTop: 5,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#000000',
+    },
+    grandTotalLabel: {
+        fontSize: 18,
+        fontWeight: '900',
+        color: '#000000',
+    },
+    grandTotalValue: {
+        fontSize: 18,
+        fontWeight: '900',
+        color: '#000000',
+    },
+    receiptFooter: {
+        textAlign: 'center',
+        fontSize: 14,
+        fontWeight: '700',
+        color: '#000000',
+        marginTop: 10,
+    },
+    receiptFooterSmall: {
+        textAlign: 'center',
+        fontSize: 11,
+        color: '#333333',
+        marginTop: 4,
+    },
+    modalActions: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 20,
+    },
+    modalBtn: {
+        flex: 1,
+        height: 48,
+        borderRadius: 12,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'center',
+        gap: 8,
+    },
+    cancelBtn: {
+        backgroundColor: '#F3F4F6',
+        borderWidth: 1,
+        borderColor: '#E5E7EB',
+    },
+    confirmBtn: {
+        backgroundColor: '#10B981',
+    },
+    cancelBtnText: {
+        color: '#4B5563',
+        fontWeight: '600',
+    },
+    confirmBtnText: {
+        color: '#FFFFFF',
+        fontWeight: '700',
+    },
+    fullScreenLoading: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    loadingText: {
+        marginTop: 15,
+        fontSize: 16,
+        fontWeight: '600',
     },
 });
 
