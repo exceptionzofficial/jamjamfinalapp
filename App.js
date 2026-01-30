@@ -1,20 +1,17 @@
-/**
- * Sri Kalki Jam Jam Resorts - Employee App
- * Employee Portal for booking services
- */
-
-import React from 'react';
+import React, { useState } from 'react';
 import { StatusBar, StyleSheet, View, ActivityIndicator } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import AppNavigator from './src/navigation/AppNavigator';
+import SplashScreen from './src/screens/SplashScreen';
 import { ThemeProvider, useTheme } from './src/context/ThemeContext';
 
 // Main app content with theme
 function AppContent() {
   const { colors, isLoading } = useTheme();
+  const [showSplash, setShowSplash] = useState(true);
 
   if (isLoading) {
     return (
@@ -22,6 +19,10 @@ function AppContent() {
         <ActivityIndicator size="large" color={colors.accent} />
       </View>
     );
+  }
+
+  if (showSplash) {
+    return <SplashScreen onFinish={() => setShowSplash(false)} />;
   }
 
   return (

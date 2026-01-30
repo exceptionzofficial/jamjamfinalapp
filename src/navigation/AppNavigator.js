@@ -14,6 +14,11 @@ import JuiceBarScreen from '../screens/JuiceBarScreen';
 import MassageScreen from '../screens/MassageScreen';
 import PoolScreen from '../screens/PoolScreen';
 import CustomerHistoryScreen from '../screens/CustomerHistoryScreen';
+import CheckedOutHistoryScreen from '../screens/CheckedOutHistoryScreen';
+import RoomsBookingScreen from '../screens/RoomsBookingScreen';
+import TheaterBookingScreen from '../screens/TheaterBookingScreen';
+import FunctionHallScreen from '../screens/FunctionHallScreen';
+import ComboScreen from '../screens/ComboScreen';
 import { useTheme } from '../context/ThemeContext';
 
 const Tab = createBottomTabNavigator();
@@ -26,6 +31,7 @@ const isTablet = width >= 768;
 const tabs = [
     { name: 'Home', icon: 'home', iconOutline: 'home-outline', label: 'Home' },
     { name: 'NewCustomer', icon: 'account-plus', iconOutline: 'account-plus-outline', label: 'New' },
+    { name: 'Combo', icon: 'package-variant', iconOutline: 'package-variant', label: 'Combos' },
     { name: 'Settings', icon: 'cog', iconOutline: 'cog-outline', label: 'Settings' },
 ];
 
@@ -101,6 +107,7 @@ const HomeTabs = () => {
         >
             <Tab.Screen name="Home" component={HomeScreen} />
             <Tab.Screen name="NewCustomer" component={NewCustomerScreen} />
+            <Tab.Screen name="Combo" component={ComboScreen} />
             <Tab.Screen name="Settings" component={SettingsScreen} />
         </Tab.Navigator>
     );
@@ -117,6 +124,10 @@ const AppNavigator = () => {
             <Stack.Screen name="Massage" component={MassageScreen} />
             <Stack.Screen name="Pool" component={PoolScreen} />
             <Stack.Screen name="CustomerHistory" component={CustomerHistoryScreen} />
+            <Stack.Screen name="CheckedOutHistory" component={CheckedOutHistoryScreen} />
+            <Stack.Screen name="Rooms" component={RoomsBookingScreen} />
+            <Stack.Screen name="Theater" component={TheaterBookingScreen} />
+            <Stack.Screen name="FunctionHall" component={FunctionHallScreen} />
         </Stack.Navigator>
     );
 };

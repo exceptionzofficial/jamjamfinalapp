@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Production URL
 const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
-// const API_BASE_URL = 'https://642786f8dfbb.ngrok-free.app/api';
+// const API_BASE_URL = 'https://437d5719e5ae.ngrok-free.app/api';
 
 // ============= UPI Payment Configuration =============
 // Change this to your UPI ID - used across all payment screens
@@ -66,16 +66,26 @@ export const getCustomers = async () => {
     return await apiCall('/customers');
 };
 
-// Get recent customers from cloud (last 10)
+// Get recent active customers (last 10 checked-in)
 export const getRecentCustomers = async () => {
     try {
-        const customers = await apiCall('/customers');
-        // Sort by checkinTime descending and take top 10
-        return customers
-            .sort((a, b) => new Date(b.checkinTime) - new Date(a.checkinTime))
-            .slice(0, 10);
+        // Fetch only checked-in customers from cloud
+        const customers = await apiCall('/customers?status=checked-in');
+        // Sort already handled by backend, but we'll slice to top 10
+        return customers.slice(0, 10);
     } catch (error) {
         console.error('Error fetching recent customers:', error);
+        return [];
+    }
+};
+
+// Get all checked-out customers for history
+export const getCheckedOutCustomers = async () => {
+    try {
+        // Fetch only checked-out customers from cloud
+        return await apiCall('/customers?status=checked-out');
+    } catch (error) {
+        console.error('Error fetching checked-out customers:', error);
         return [];
     }
 };
@@ -553,9 +563,17 @@ export const getCustomerFullHistory = async (customerId) => {
             getCustomerPoolOrders(customerId).catch(() => []),
         ]);
 
+        console.log('API: Fetched history - Games/Combos:', games.length, 'Restaurant:', restaurant.length);
+
+        // Log combo bookings from games table
+        const combosFromGames = games.filter(g => g.service === 'Combo');
+        if (combosFromGames.length > 0) {
+            console.log('API: Found', combosFromGames.length, 'combo bookings in games table');
+        }
+
         // Add service property to each order if missing and normalize
         const allOrders = [
-            ...games.map(o => ({ ...o, service: 'Games', type: 'games' })),
+            ...games.map(o => ({ ...o, service: o.service || 'Games', type: 'games' })),
             ...restaurant.map(o => ({ ...o, service: 'Restaurant', type: 'restaurant' })),
             ...bakery.map(o => ({ ...o, service: 'Bakery', type: 'bakery' })),
             ...juice.map(o => ({ ...o, service: 'Juice Bar', type: 'juice' })),

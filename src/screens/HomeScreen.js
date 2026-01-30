@@ -215,6 +215,9 @@ const HomeScreen = ({ navigation }) => {
             'juice': 'JuiceBar',
             'massage': 'Massage',
             'pool': 'Pool',
+            'rooms': 'Rooms',
+            'theater': 'Theater',
+            'functionhalls': 'FunctionHall',
         };
         const screenName = screenMap[service.id];
         if (screenName) {
@@ -391,14 +394,24 @@ const HomeScreen = ({ navigation }) => {
 
     const renderListHeader = () => (
         <View>
-            <TouchableOpacity
-                style={[styles.newBookingButton, { backgroundColor: colors.accent }]}
-                onPress={() => navigation.navigate('NewCustomer')}
-                activeOpacity={0.8}
-            >
-                <Icon name="account-plus" size={22} color={colors.textOnAccent} />
-                <Text style={[styles.newBookingText, { color: colors.textOnAccent }]}>New Booking</Text>
-            </TouchableOpacity>
+            <View style={styles.actionButtonsRow}>
+                <TouchableOpacity
+                    style={[styles.actionButtonMain, { backgroundColor: colors.accent }]}
+                    onPress={() => navigation.navigate('NewCustomer')}
+                    activeOpacity={0.8}
+                >
+                    <Icon name="account-plus" size={20} color={colors.textOnAccent} />
+                    <Text style={[styles.actionButtonText, { color: colors.textOnAccent }]}>New Booking</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                    style={[styles.actionButtonMain, { backgroundColor: '#4B5563' }]}
+                    onPress={() => navigation.navigate('CheckedOutHistory')}
+                    activeOpacity={0.8}
+                >
+                    <Icon name="history" size={20} color="#FFFFFF" />
+                    <Text style={[styles.actionButtonText, { color: '#FFFFFF' }]}>History</Text>
+                </TouchableOpacity>
+            </View>
             <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>
                 {searchQuery.length > 0 ? `Search Results (${customers.length})` : 'Recent Customers'}
             </Text>
@@ -478,17 +491,22 @@ const styles = StyleSheet.create({
     listContent: { paddingGrow: 1, paddingBottom: 100, paddingHorizontal: 8 },
     columnWrapper: { justifyContent: 'flex-start' },
     serviceGridItem: { width: isTablet ? '25%' : '50%', padding: 6 },
-    newBookingButton: {
+    actionButtonsRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginHorizontal: 8,
+        marginBottom: 16,
+    },
+    actionButtonMain: {
+        flex: 1,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
-        marginHorizontal: 8,
-        marginBottom: 16,
         paddingVertical: 14,
         borderRadius: 12,
         elevation: 2,
     },
-    newBookingText: { fontSize: 16, fontWeight: '600', marginLeft: 8 },
+    actionButtonText: { fontSize: 14, fontWeight: '600', marginLeft: 8 },
     sectionTitle: { fontSize: 16, fontWeight: '600', marginHorizontal: 8, marginTop: 12, marginBottom: 12 },
     emptyState: { alignItems: 'center', justifyContent: 'center', paddingVertical: 48 },
     emptyText: { fontSize: 16, marginTop: 12 },

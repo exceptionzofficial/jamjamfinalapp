@@ -320,7 +320,7 @@ const GamesScreen = ({ route, navigation }) => {
 
         try {
             await saveBooking({
-                customerId: customer?.id,
+                customerId: customer?.customerId || customer?.id,
                 customerName: customer?.name || 'Walk-in',
                 customerMobile: customer?.mobile || '',
                 items: bookingItems,

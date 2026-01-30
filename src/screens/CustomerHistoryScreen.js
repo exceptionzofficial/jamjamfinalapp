@@ -32,7 +32,20 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
 
         if (showLoading) setIsLoading(true);
         try {
-            const data = await getCustomerFullHistory(customer.customerId || customer.id);
+            const customerId = customer.customerId || customer.id;
+            console.log('Loading history for customer:', customerId);
+            const data = await getCustomerFullHistory(customerId);
+            console.log('History loaded:', data.length, 'items');
+
+            // Log combo orders specifically
+            const combos = data.filter(item => item.service === 'Combo');
+            if (combos.length > 0) {
+                console.log('Combo orders found:', combos.length);
+                combos.forEach(combo => {
+                    console.log('Combo:', combo.comboName, 'Items:', combo.items?.length || 0);
+                });
+            }
+
             setHistory(data);
 
             // Calculate stats
@@ -63,6 +76,8 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
             'Juice Bar': 'cup',
             'Massage': 'spa',
             'Pool': 'pool',
+            'Swimming Pool': 'pool',
+            'Combo': 'package-variant',
         };
         return icons[service] || 'tag';
     };
@@ -75,6 +90,8 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
             'Juice Bar': '#F59E0B',  // Amber
             'Massage': '#10B981',    // Emerald
             'Pool': '#3B82F6',       // Blue
+            'Swimming Pool': '#3B82F6', // Blue (same as Pool)
+            'Combo': '#F97316',      // Orange
         };
         return colors_map[service] || colors.brand;
     };
@@ -82,9 +99,16 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
     const renderOrderItem = ({ item }) => (
         <SlideUp style={[styles.card, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <View style={styles.cardHeader}>
-                <View style={[styles.serviceBadge, { backgroundColor: getServiceColor(item.service) }]}>
-                    <Icon name={getServiceIcon(item.service)} size={16} color="#FFFFFF" />
-                    <Text style={styles.serviceText}>{item.service}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 }}>
+                    <View style={[styles.serviceBadge, { backgroundColor: getServiceColor(item.service) }]}>
+                        <Icon name={getServiceIcon(item.service)} size={16} color="#FFFFFF" />
+                        <Text style={styles.serviceText}>{item.service}</Text>
+                    </View>
+                    {item.comboName && (
+                        <Text style={[styles.comboNameText, { color: colors.textPrimary }]} numberOfLines={1}>
+                            {item.comboName}
+                        </Text>
+                    )}
                 </View>
                 <Text style={[styles.dateText, { color: colors.textMuted }]}>
                     {formatDateTime(item.timestamp || item.orderTime || item.createdAt)}
@@ -95,7 +119,7 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
                 {item.items && item.items.map((subItem, idx) => (
                     <View key={idx} style={styles.itemRow}>
                         <Text style={[styles.itemName, { color: colors.textPrimary }]} numberOfLines={1}>
-                            • {subItem.name || subItem.gameName || subItem.typeName || 'Item'}
+                            • {subItem.name || subItem.itemName || subItem.gameName || subItem.typeName || 'Item'}
                         </Text>
                         <Text style={[styles.itemQty, { color: colors.textSecondary }]}>
                             x{subItem.quantity || subItem.coinCount || 1}
@@ -108,18 +132,23 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
             </View>
 
             <View style={[styles.cardFooter, { borderTopColor: colors.border }]}>
-                <View style={[styles.paymentBadge, { backgroundColor: item.paymentMethod === 'Cash' ? '#10B981' : '#8B5CF6' }]}>
-                    <Icon name={item.paymentMethod === 'Cash' ? 'cash' : 'qrcode-scan'} size={12} color="#FFFFFF" />
+                <View style={[styles.paymentBadge, { backgroundColor: item.paymentMethod === 'Cash' ? '#10B981' : item.paymentMethod === 'Pay Later' ? '#F59E0B' : '#8B5CF6' }]}>
+                    <Icon name={item.paymentMethod === 'Cash' ? 'cash' : item.paymentMethod === 'Pay Later' ? 'clock-outline' : 'qrcode-scan'} size={12} color="#FFFFFF" />
                     <Text style={styles.paymentText}>{item.paymentMethod || 'Paid'}</Text>
                 </View>
                 <View style={styles.totalContainer}>
+                    {item.comboDiscount > 0 && (
+                        <Text style={[styles.discountLabel, { color: '#10B981' }]}>
+                            Saved ₹{item.comboDiscount || 0}
+                        </Text>
+                    )}
                     {item.taxAmount > 0 && (
                         <Text style={[styles.taxLabel, { color: colors.textMuted }]}>
-                            (Inc. ₹{item.taxAmount} tax)
+                            (Inc. ₹{item.taxAmount || 0} tax)
                         </Text>
                     )}
                     <Text style={[styles.totalAmount, { color: colors.brand }]}>
-                        ₹{item.totalAmount}
+                        ₹{item.totalAmount || 0}
                     </Text>
                 </View>
             </View>
@@ -365,6 +394,16 @@ const styles = StyleSheet.create({
     taxLabel: {
         fontSize: 10,
         marginBottom: 2,
+    },
+    discountLabel: {
+        fontSize: 11,
+        fontWeight: '600',
+        marginBottom: 2,
+    },
+    comboNameText: {
+        fontSize: 14,
+        fontWeight: '600',
+        flex: 1,
     },
     totalAmount: {
         fontSize: 18,

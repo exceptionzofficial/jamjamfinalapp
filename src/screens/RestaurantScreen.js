@@ -34,6 +34,7 @@ import {
     calculateTax,
 } from '../utils/api';
 import { SlideUp, FadeIn } from '../utils/animations';
+import { printKOT } from '../utils/PrinterService';
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
@@ -281,6 +282,14 @@ const RestaurantScreen = ({ route, navigation }) => {
             };
 
             await saveRestaurantOrder(order);
+
+            // Print KOT (Kitchen Order Ticket)
+            try {
+                await printKOT(order);
+            } catch (printError) {
+                console.error('KOT Printing Failed:', printError);
+                // We don't alert here to avoid interrupting the success flow
+            }
 
             // Reload pending orders if it was a paylater order
             if (paymentMethod === 'paylater') {
@@ -1084,16 +1093,25 @@ const RestaurantScreen = ({ route, navigation }) => {
                                         )}
                                     </View>
                                     <View style={styles.historyCardFooter}>
-                                        <View style={[
-                                            styles.paymentBadge,
-                                            { backgroundColor: item.paymentMethod === 'Cash' ? '#10B981' : '#8B5CF6' }
-                                        ]}>
-                                            <Icon
-                                                name={item.paymentMethod === 'Cash' ? 'cash' : 'qrcode-scan'}
-                                                size={12}
-                                                color="#FFFFFF"
-                                            />
-                                            <Text style={styles.paymentBadgeText}>{item.paymentMethod}</Text>
+                                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                                            <View style={[
+                                                styles.paymentBadge,
+                                                { backgroundColor: item.paymentMethod === 'Cash' ? '#10B981' : '#8B5CF6' }
+                                            ]}>
+                                                <Icon
+                                                    name={item.paymentMethod === 'Cash' ? 'cash' : 'qrcode-scan'}
+                                                    size={12}
+                                                    color="#FFFFFF"
+                                                />
+                                                <Text style={styles.paymentBadgeText}>{item.paymentMethod}</Text>
+                                            </View>
+                                            <TouchableOpacity
+                                                style={[styles.printBadge, { backgroundColor: colors.accent }]}
+                                                onPress={() => printKOT(item)}
+                                            >
+                                                <Icon name="printer" size={12} color="#FFFFFF" />
+                                                <Text style={styles.printBadgeText}>KOT</Text>
+                                            </TouchableOpacity>
                                         </View>
                                         <Text style={[styles.historyTotal, { color: colors.brand }]}>
                                             ₹{item.totalAmount}
@@ -1961,6 +1979,19 @@ const styles = StyleSheet.create({
         gap: 4,
     },
     paymentBadgeText: {
+        color: '#FFFFFF',
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    printBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 4,
+        paddingHorizontal: 8,
+        borderRadius: 6,
+        gap: 4,
+    },
+    printBadgeText: {
         color: '#FFFFFF',
         fontSize: 11,
         fontWeight: '600',
