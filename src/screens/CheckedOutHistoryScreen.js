@@ -132,13 +132,24 @@ const CheckedOutHistoryScreen = ({ navigation }) => {
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <Header subtitle="Checkout History" showBack={true} onBack={() => navigation.goBack()} />
+            <Header subtitle="Checkout History" />
+
+            <TouchableOpacity
+                style={styles.backBtn}
+                onPress={() => navigation.goBack()}
+            >
+                <Icon name="arrow-left" size={24} color={colors.textPrimary} />
+                <Text style={[styles.backText, { color: colors.textPrimary }]}>Back</Text>
+            </TouchableOpacity>
+
+            <View style={{ paddingHorizontal: 16 }}>
+                {renderHeader()}
+            </View>
 
             <FlatList
                 data={filteredCustomers}
                 keyExtractor={(item) => item.customerId || item.id}
                 renderItem={renderCustomerItem}
-                ListHeaderComponent={renderHeader}
                 ListEmptyComponent={!isLoading && renderEmptyState}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
@@ -158,6 +169,16 @@ const CheckedOutHistoryScreen = ({ navigation }) => {
 
 const styles = StyleSheet.create({
     container: { flex: 1 },
+    backBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+    },
+    backText: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginLeft: 8,
+    },
     listContent: { paddingBottom: 30, paddingHorizontal: 16 },
     headerSection: { marginVertical: 16 },
     searchContainer: {

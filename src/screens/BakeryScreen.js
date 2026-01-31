@@ -109,9 +109,10 @@ const BakeryScreen = ({ route, navigation }) => {
 
             // Smart update
             setMenuItems(prev => {
-                const prevIds = prev.map(i => i.id).join(',');
-                const newIds = items.map(i => i.id).join(',');
-                return prevIds !== newIds ? items : prev;
+                const prevIds = prev.map(i => i.id || i.itemId).join(',');
+                const newIds = items.map(i => i.id || i.itemId).join(',');
+                if (prevIds === newIds && prev.length === items.length) return prev;
+                return items;
             });
         } catch (error) {
             console.error('Error loading bakery items:', error);
