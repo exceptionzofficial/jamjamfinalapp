@@ -222,7 +222,7 @@ const HomeScreen = ({ navigation }) => {
             'juice': 'JuiceBar',
             'massage': 'Massage',
             'pool': 'Pool',
-            'rooms': 'Rooms',
+            'rooms': 'RoomsPackage',
             'theater': 'Theater',
             'functionhalls': 'FunctionHall',
         };

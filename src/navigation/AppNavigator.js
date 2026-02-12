@@ -16,6 +16,7 @@ import PoolScreen from '../screens/PoolScreen';
 import CustomerHistoryScreen from '../screens/CustomerHistoryScreen';
 import CheckedOutHistoryScreen from '../screens/CheckedOutHistoryScreen';
 import RoomsBookingScreen from '../screens/RoomsBookingScreen';
+import RoomsPackageScreen from '../screens/RoomsPackageScreen';
 import TheaterBookingScreen from '../screens/TheaterBookingScreen';
 import FunctionHallScreen from '../screens/FunctionHallScreen';
 import ComboScreen from '../screens/ComboScreen';
@@ -126,6 +127,7 @@ const AppNavigator = () => {
             <Stack.Screen name="CustomerHistory" component={CustomerHistoryScreen} />
             <Stack.Screen name="CheckedOutHistory" component={CheckedOutHistoryScreen} />
             <Stack.Screen name="Rooms" component={RoomsBookingScreen} />
+            <Stack.Screen name="RoomsPackage" component={RoomsPackageScreen} />
             <Stack.Screen name="Theater" component={TheaterBookingScreen} />
             <Stack.Screen name="FunctionHall" component={FunctionHallScreen} />
         </Stack.Navigator>
