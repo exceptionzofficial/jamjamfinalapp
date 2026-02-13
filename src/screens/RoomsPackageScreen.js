@@ -16,6 +16,7 @@ import {
     Platform,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import LottieView from 'lottie-react-native';
 import { launchImageLibrary } from 'react-native-image-picker';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
@@ -25,9 +26,12 @@ import * as api from '../utils/api';
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
 
+// Lottie animation
+const RoomLoadingAnimation = require('../assets/room.json');
+
 const FACILITIES = [
     { name: 'FREE BREAKFAST', icon: 'food-croissant' },
-    { name: 'FREE PARKING', icon: 'car-parking' },
+    { name: 'FREE PARKING', icon: 'parking' },
     { name: 'LIVING AREA', icon: 'sofa' },
     { name: 'FREE WIFI', icon: 'wifi' },
     { name: 'RESTAURANTS', icon: 'silverware-fork-knife' },
@@ -59,15 +63,24 @@ const RoomsPackageScreen = ({ navigation, route }) => {
         fetchRooms();
     }, []);
 
-    const fetchRooms = async () => {
-        setLoading(true);
+    const fetchRooms = async (showLoading = true) => {
+        const startTime = Date.now();
+        if (showLoading) setLoading(true);
+
         try {
             const data = await api.getRooms();
             setRooms(data);
         } catch (error) {
             Alert.alert('Error', 'Failed to fetch rooms');
         } finally {
-            setLoading(false);
+            // Ensure minimum 5 seconds loading animation if it's the initial load
+            const elapsed = Date.now() - startTime;
+            const minLoadTime = showLoading ? 5000 : 0;
+            const remainingTime = Math.max(0, minLoadTime - elapsed);
+
+            setTimeout(() => {
+                setLoading(false);
+            }, remainingTime);
         }
     };
 
@@ -148,13 +161,17 @@ const RoomsPackageScreen = ({ navigation, route }) => {
                     style: 'destructive',
                     onPress: async () => {
                         try {
+                            setLoading(true);
                             await api.deleteRoom(roomId);
+                            Alert.alert('Success', 'Room deleted successfully');
                             fetchRooms();
                         } catch (error) {
                             Alert.alert('Error', 'Failed to delete room');
+                        } finally {
+                            setLoading(false);
                         }
-                    }
-                }
+                    },
+                },
             ]
         );
     };
@@ -347,9 +364,28 @@ const RoomsPackageScreen = ({ navigation, route }) => {
         </SlideUp>
     );
 
+    if (loading) {
+        return (
+            <View style={[styles.container, { backgroundColor: '#6D9788' }]}>
+                <Header title="Rooms" subtitle="Live Inventory" />
+                <View style={styles.loadingContainer}>
+                    <LottieView
+                        source={RoomLoadingAnimation}
+                        autoPlay
+                        loop
+                        style={styles.lottieAnimation}
+                    />
+                    <Text style={[styles.loadingText, { color: '#FFFFFF' }]}>
+                        Finding the best rooms for you...
+                    </Text>
+                </View>
+            </View>
+        );
+    }
+
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
-            <Header title="Rooms Packages" subtitle={customer?.name || 'Guest'} />
+            <Header title="Rooms" subtitle="Live Inventory" />
 
             <View style={styles.navBar}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => navigation.goBack()}>
@@ -368,22 +404,15 @@ const RoomsPackageScreen = ({ navigation, route }) => {
                 </View>
             </View>
 
-            {loading ? (
-                <View style={styles.loaderContainer}>
-                    <ActivityIndicator size="large" color="#F9D423" />
-                    <Text style={styles.loaderText}>Loading Rooms...</Text>
-                </View>
-            ) : (
-                <FlatList
-                    data={rooms}
-                    keyExtractor={(item) => item.id}
-                    renderItem={renderPackageItem}
-                    contentContainerStyle={styles.listContent}
-                    showsVerticalScrollIndicator={false}
-                    refreshing={loading}
-                    onRefresh={fetchRooms}
-                />
-            )}
+            <FlatList
+                data={rooms}
+                keyExtractor={(item) => item.id}
+                renderItem={renderPackageItem}
+                contentContainerStyle={styles.listContent}
+                showsVerticalScrollIndicator={false}
+                refreshing={loading}
+                onRefresh={fetchRooms}
+            />
 
             {/* Add/Edit Modal */}
             <Modal
@@ -976,6 +1005,21 @@ const styles = StyleSheet.create({
     removeDescBtn: {
         marginLeft: 10,
         padding: 5,
+    },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    lottieAnimation: {
+        width: width * 0.8,
+        height: width * 0.8,
+    },
+    loadingText: {
+        marginTop: 20,
+        fontSize: 18,
+        fontWeight: '700',
+        textAlign: 'center',
     },
 });
 

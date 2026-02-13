@@ -16,6 +16,7 @@ import {
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { launchImageLibrary } from 'react-native-image-picker';
 import QRCode from 'react-native-qrcode-svg';
+import LottieView from 'lottie-react-native';
 import DateTimePickerModal from "react-native-modal-datetime-picker";
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
@@ -23,6 +24,9 @@ import { SlideUp, FadeIn, ScaleIn } from '../utils/animations';
 import * as api from '../utils/api';
 
 const { width } = Dimensions.get('window');
+
+// Lottie animation
+const RoomLoadingAnimation = require('../assets/room.json');
 
 const RoomCheckoutScreen = ({ navigation, route }) => {
     const { colors } = useTheme();
@@ -136,6 +140,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
             return;
         }
 
+        const startTime = Date.now();
         setLoading(true);
         try {
             const bookingData = {
@@ -166,15 +171,42 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
             };
 
             await api.saveBooking(bookingData);
-            Alert.alert('Success', 'Room booked successfully!', [
-                { text: 'OK', onPress: () => navigation.navigate('CustomerHistory', { customer }) }
-            ]);
+
+            // Ensure minimum 5 seconds loading animation
+            const elapsed = Date.now() - startTime;
+            const minLoadTime = 5000;
+            const remainingTime = Math.max(0, minLoadTime - elapsed);
+
+            setTimeout(() => {
+                setLoading(false);
+                Alert.alert('Success', 'Room booked successfully!', [
+                    { text: 'OK', onPress: () => navigation.navigate('CustomerHistory', { customer }) }
+                ]);
+            }, remainingTime);
         } catch (error) {
-            Alert.alert('Error', 'Failed to save booking: ' + error.message);
-        } finally {
             setLoading(false);
+            Alert.alert('Error', 'Failed to save booking: ' + error.message);
         }
     };
+
+    if (loading) {
+        return (
+            <View style={[styles.container, { backgroundColor: '#6D9788' }]}>
+                <Header title="Confirming" subtitle="Securing your room..." />
+                <View style={styles.loadingContainer}>
+                    <LottieView
+                        source={RoomLoadingAnimation}
+                        autoPlay
+                        loop
+                        style={styles.lottieAnimation}
+                    />
+                    <Text style={[styles.loadingText, { color: '#FFFFFF' }]}>
+                        Processing your booking...
+                    </Text>
+                </View>
+            </View>
+        );
+    }
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -381,6 +413,21 @@ const styles = StyleSheet.create({
     qrHint: { marginTop: 12, fontWeight: '700', fontSize: 15, textAlign: 'center' },
     confirmBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 18, borderRadius: 20, gap: 12, elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
     confirmText: { color: '#FFF', fontSize: 18, fontWeight: '800' },
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    lottieAnimation: {
+        width: width * 0.8,
+        height: width * 0.8,
+    },
+    loadingText: {
+        marginTop: 20,
+        fontSize: 18,
+        fontWeight: '700',
+        textAlign: 'center',
+    },
 });
 
 export default RoomCheckoutScreen;
