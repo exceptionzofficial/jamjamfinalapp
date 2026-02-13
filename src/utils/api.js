@@ -8,8 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // const API_BASE_URL = 'http://10.0.2.2:3000/api';
 
 // Production URL
-const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
-// const API_BASE_URL = 'https://437d5719e5ae.ngrok-free.app/api';
+// const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
+const API_BASE_URL = 'https://a3f8-2405-201-e02c-b031-ac57-448c-3953-eb7e.ngrok-free.app/api';
 
 // ============= UPI Payment Configuration =============
 // Change this to your UPI ID - used across all payment screens
@@ -26,10 +26,12 @@ const apiCall = async (endpoint, options = {}) => {
     try {
         const url = `${API_BASE_URL}${endpoint}`;
         const config = {
+            ...options,
             headers: {
                 'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+                ...(options.headers || {}),
             },
-            ...options,
         };
 
         // Add timeout of 10 seconds
@@ -538,6 +540,87 @@ export const calculateTax = (subtotal, taxPercent) => {
     const taxAmount = Math.round((subtotal * taxPercent) / 100);
     const total = subtotal + taxAmount;
     return { subtotal, taxPercent, taxAmount, total };
+};
+
+// ============= ROOMS API (LIVE) =============
+
+export const getRooms = async () => {
+    try {
+        const rooms = await apiCall('/rooms');
+        return rooms.map(room => ({
+            ...room,
+            id: room.roomId || room.id,
+        }));
+    } catch (error) {
+        console.error('Error fetching rooms:', error);
+        return [];
+    }
+};
+
+export const addRoom = async (room) => {
+    return await apiCall('/rooms', {
+        method: 'POST',
+        body: JSON.stringify(room),
+    });
+};
+
+export const updateRoom = async (roomId, updates) => {
+    return await apiCall(`/rooms/${roomId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+    });
+};
+
+export const deleteRoom = async (roomId) => {
+    return await apiCall(`/rooms/${roomId}`, {
+        method: 'DELETE',
+    });
+};
+
+export const seedRooms = async () => {
+    return await apiCall('/rooms/seed', {
+        method: 'POST',
+    });
+};
+
+export const getRoomUploadUrl = async (fileName, fileType) => {
+    return await apiCall('/rooms/upload-url', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ fileName, fileType }),
+    });
+};
+
+// Upload image via backend (sends base64 to backend, backend uploads to S3)
+// Uses direct fetch with a longer timeout since base64 images are large
+export const uploadRoomImage = async (base64Data, fileName, fileType = 'image/jpeg') => {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout for image upload
+
+    try {
+        const response = await fetch(`${API_BASE_URL}/rooms/upload-image`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'ngrok-skip-browser-warning': 'true',
+            },
+            body: JSON.stringify({ base64Data, fileName, fileType }),
+            signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        const data = await response.json();
+        if (!response.ok) {
+            throw new Error(data.error || 'Image upload failed');
+        }
+        return data;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        console.error('Image upload error:', error.message);
+        throw error;
+    }
 };
 
 // ============= CENTRALIZED HISTORY API =============
