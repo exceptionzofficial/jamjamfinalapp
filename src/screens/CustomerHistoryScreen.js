@@ -78,6 +78,7 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
             'Pool': 'pool',
             'Swimming Pool': 'pool',
             'Combo': 'package-variant',
+            'ROOM': 'bed',
         };
         return icons[service] || 'tag';
     };
@@ -92,6 +93,7 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
             'Pool': '#3B82F6',       // Blue
             'Swimming Pool': '#3B82F6', // Blue (same as Pool)
             'Combo': '#F97316',      // Orange
+            'ROOM': '#06B6D4',       // Cyan
         };
         return colors_map[service] || colors.brand;
     };

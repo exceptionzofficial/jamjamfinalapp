@@ -335,7 +335,11 @@ const RoomsPackageScreen = ({ navigation, route }) => {
                 </View>
 
                 {/* Book Button */}
-                <TouchableOpacity style={styles.bookButton} activeOpacity={0.8}>
+                <TouchableOpacity
+                    style={styles.bookButton}
+                    activeOpacity={0.8}
+                    onPress={() => navigation.navigate('RoomCheckout', { customer, room: item })}
+                >
                     <Text style={styles.bookButtonText}>BOOK NOW</Text>
                     <Icon name="chevron-right" size={24} color="#FFFFFF" />
                 </TouchableOpacity>
