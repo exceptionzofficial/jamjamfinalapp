@@ -225,6 +225,7 @@ const HomeScreen = ({ navigation }) => {
             'rooms': 'RoomsPackage',
             'theater': 'Theater',
             'functionhalls': 'FunctionHall',
+            'bar': 'Bar',
         };
         const screenName = screenMap[service.id];
         if (screenName) {

@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Production URL
 // const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
-const API_BASE_URL = 'https://a3f8-2405-201-e02c-b031-ac57-448c-3953-eb7e.ngrok-free.app/api';
+const API_BASE_URL = 'https://a668-2401-4900-cac6-bedc-b1fc-6d3-9e54-a111.ngrok-free.app/api';
 
 // ============= UPI Payment Configuration =============
 // Change this to your UPI ID - used across all payment screens
@@ -524,6 +524,20 @@ export const getTaxSettings = async () => {
     }
 };
 
+// ============= BAR ORDERS API (LIVE) =============
+
+export const saveBarOrder = async (order) => {
+    return await apiCall('/bar-orders', {
+        method: 'POST',
+        body: JSON.stringify(order),
+    });
+};
+
+export const getCustomerBarOrders = async (customerId) => {
+    if (!customerId) return [];
+    return await apiCall(`/bar-orders/customer/${customerId}`);
+};
+
 // Get tax rate for a specific service
 export const getTaxByService = async (serviceId) => {
     try {
@@ -636,7 +650,8 @@ export const getCustomerFullHistory = async (customerId) => {
             bakery,
             juice,
             massage,
-            pool
+            pool,
+            bar
         ] = await Promise.all([
             getCustomerBookings(customerId).catch(() => []),
             getCustomerRestaurantOrders(customerId).catch(() => []),
@@ -644,6 +659,7 @@ export const getCustomerFullHistory = async (customerId) => {
             getCustomerJuiceOrders(customerId).catch(() => []),
             getCustomerMassageOrders(customerId).catch(() => []),
             getCustomerPoolOrders(customerId).catch(() => []),
+            getCustomerBarOrders(customerId).catch(() => []),
         ]);
 
         console.log('API: Fetched history - Games/Combos:', games.length, 'Restaurant:', restaurant.length);
@@ -662,6 +678,7 @@ export const getCustomerFullHistory = async (customerId) => {
             ...juice.map(o => ({ ...o, service: 'Juice Bar', type: 'juice' })),
             ...massage.map(o => ({ ...o, service: 'Massage', type: 'massage' })),
             ...pool.map(o => ({ ...o, service: 'Pool', type: 'pool' })),
+            ...bar.map(o => ({ ...o, service: 'Bar', type: 'bar' })),
         ];
 
         // Sort by timestamp descending (newest first)

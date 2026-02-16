@@ -21,6 +21,7 @@ import TheaterBookingScreen from '../screens/TheaterBookingScreen';
 import FunctionHallScreen from '../screens/FunctionHallScreen';
 import ComboScreen from '../screens/ComboScreen';
 import RoomCheckoutScreen from '../screens/RoomCheckoutScreen';
+import BarScreen from '../screens/BarScreen';
 import { useTheme } from '../context/ThemeContext';
 
 const Tab = createBottomTabNavigator();
@@ -132,6 +133,7 @@ const AppNavigator = () => {
             <Stack.Screen name="Theater" component={TheaterBookingScreen} />
             <Stack.Screen name="FunctionHall" component={FunctionHallScreen} />
             <Stack.Screen name="RoomCheckout" component={RoomCheckoutScreen} />
+            <Stack.Screen name="Bar" component={BarScreen} />
         </Stack.Navigator>
     );
 };

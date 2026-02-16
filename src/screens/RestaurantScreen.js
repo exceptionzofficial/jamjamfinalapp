@@ -49,6 +49,8 @@ const CATEGORIES = [
     { id: 'combos', name: 'Combos', icon: 'package-variant' },
 ];
 
+const RESTAURANT_CATEGORY_IDS = CATEGORIES.map(c => c.id).filter(id => id !== 'all');
+
 // Border colors for menu cards (like Games)
 const BORDER_COLORS = [
     '#3B82F6', '#10B981', '#F59E0B', '#EC4899', '#8B5CF6',
@@ -70,6 +72,7 @@ const RestaurantScreen = ({ route, navigation }) => {
     const [selectedCategory, setSelectedCategory] = useState('all');
     const [cart, setCart] = useState({});
     const [refreshing, setRefreshing] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Modal states
     const [showCartModal, setShowCartModal] = useState(false);
@@ -119,11 +122,16 @@ const RestaurantScreen = ({ route, navigation }) => {
             // Set tax rate
             setTaxPercent(tax || 0);
 
+            // Filter only items that belong to Restaurant categories
+            const restaurantOnlyItems = items.filter(item =>
+                RESTAURANT_CATEGORY_IDS.includes(item.category?.toLowerCase())
+            );
+
             // Smart update
             setMenuItems(prev => {
                 const prevIds = prev.map(i => i.id).join(',');
-                const newIds = items.map(i => i.id).join(',');
-                return prevIds !== newIds ? items : prev;
+                const newIds = restaurantOnlyItems.map(i => i.id).join(',');
+                return prevIds !== newIds ? restaurantOnlyItems : prev;
             });
 
             setCombos(prev => {
@@ -181,14 +189,14 @@ const RestaurantScreen = ({ route, navigation }) => {
 
     // Filter items by category
     const filteredItems = useMemo(() => {
-        if (selectedCategory === 'all') {
-            return menuItems;
-        }
-        if (selectedCategory === 'combos') {
-            return combos;
-        }
-        return menuItems.filter(item => item.category === selectedCategory);
-    }, [menuItems, combos, selectedCategory]);
+        const itemsToFilter = selectedCategory === 'combos' ? combos : menuItems;
+        return itemsToFilter.filter(item => {
+            const matchesCategory = selectedCategory === 'all' || selectedCategory === 'combos' || item.category === selectedCategory;
+            const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()));
+            return matchesCategory && matchesSearch;
+        });
+    }, [menuItems, combos, selectedCategory, searchQuery]);
 
     // Cart calculations
     const cartItems = useMemo(() => {
@@ -524,20 +532,30 @@ const RestaurantScreen = ({ route, navigation }) => {
                                 <Text style={[styles.menuName, { color: colors.textPrimary }]} numberOfLines={2}>
                                     {item.name}
                                 </Text>
+                                <View style={styles.priceContainer}>
+                                    <Text style={[styles.menuPrice, { color: colors.brand }]}>
+                                        {item.quantity && item.quantity > 1 && (
+                                            <Text style={styles.quantityBadge}>{item.quantity}× </Text>
+                                        )}
+                                        ₹{price}
+                                        {isCombo && item.originalPrice && (
+                                            <Text style={styles.originalPrice}> ₹{item.originalPrice}</Text>
+                                        )}
+                                    </Text>
+                                    {!isCombo && item.stock !== undefined && (
+                                        <Text style={[
+                                            styles.stockText,
+                                            { color: item.stock <= (item.lowStockThreshold || 5) ? '#EF4444' : colors.textMuted }
+                                        ]}>
+                                            Stock: {item.stock}
+                                        </Text>
+                                    )}
+                                </View>
                                 {item.description && (
                                     <Text style={[styles.menuDescription, { color: colors.textMuted }]} numberOfLines={2}>
                                         {item.description}
                                     </Text>
                                 )}
-                                <Text style={[styles.menuPrice, { color: colors.brand }]}>
-                                    {item.quantity && item.quantity > 1 && (
-                                        <Text style={styles.quantityBadge}>{item.quantity}× </Text>
-                                    )}
-                                    ₹{price}
-                                    {isCombo && item.originalPrice && (
-                                        <Text style={styles.originalPrice}> ₹{item.originalPrice}</Text>
-                                    )}
-                                </Text>
 
                                 {/* Tap hint when in action mode */}
                                 {isInActionMode && !isCombo && (
@@ -586,6 +604,48 @@ const RestaurantScreen = ({ route, navigation }) => {
     // Render header
     const renderHeader = () => (
         <>
+            {/* Search + Admin Row */}
+            <View style={styles.searchSection}>
+                <View style={styles.headerTopRow}>
+                    <View style={[styles.searchContainer, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                        <Icon name="magnify" size={22} color={colors.textSecondary} />
+                        <TextInput
+                            placeholder="Search..."
+                            placeholderTextColor={colors.textMuted}
+                            style={[styles.searchInput, { color: colors.textPrimary }]}
+                            value={searchQuery}
+                            onChangeText={setSearchQuery}
+                        />
+                        {searchQuery !== '' && (
+                            <TouchableOpacity onPress={() => setSearchQuery('')}>
+                                <Icon name="close-circle" size={18} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                        )}
+                    </View>
+
+                    <View style={styles.adminActions}>
+                        <TouchableOpacity
+                            style={[styles.smallActionButton, { backgroundColor: isEditMode ? colors.brand : colors.card, borderColor: colors.border }]}
+                            onPress={toggleEditMode}
+                        >
+                            <Icon name="pencil" size={18} color={isEditMode ? '#FFFFFF' : colors.brand} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.smallActionButton, { backgroundColor: isDeleteMode ? '#EF4444' : colors.card, borderColor: colors.border }]}
+                            onPress={toggleDeleteMode}
+                        >
+                            <Icon name="delete" size={18} color={isDeleteMode ? '#FFFFFF' : '#EF4444'} />
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.smallActionButton, { backgroundColor: colors.brand, borderColor: colors.brand }]}
+                            onPress={() => { setEditingItem(null); setShowMenuManageModal(true); }}
+                        >
+                            <Icon name="plus" size={18} color="#FFFFFF" />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+
             {/* Customer Banner */}
             <SlideUp delay={100}>
                 <View style={[styles.customerBanner, { backgroundColor: colors.card, borderColor: colors.brand }]}>
@@ -597,20 +657,7 @@ const RestaurantScreen = ({ route, navigation }) => {
                         <Text style={[styles.customerMobile, { color: colors.textSecondary }]}>{customer?.mobile}</Text>
                     </View>
                     <View style={styles.headerActions}>
-                        {/* Edit button */}
-                        <TouchableOpacity
-                            style={[styles.actionButton, { backgroundColor: isEditMode ? colors.brand : colors.surfaceLight }]}
-                            onPress={toggleEditMode}
-                        >
-                            <Icon name="pencil" size={18} color={isEditMode ? '#FFFFFF' : colors.brand} />
-                        </TouchableOpacity>
-                        {/* Delete button */}
-                        <TouchableOpacity
-                            style={[styles.actionButton, { backgroundColor: isDeleteMode ? '#EF4444' : colors.surfaceLight }]}
-                            onPress={toggleDeleteMode}
-                        >
-                            <Icon name="delete" size={18} color={isDeleteMode ? '#FFFFFF' : '#EF4444'} />
-                        </TouchableOpacity>
+                        {/* Pending Indicator */}
                         {/* Pending Indicator */}
                         {pendingOrders.length > 0 && (
                             <TouchableOpacity
@@ -697,12 +744,22 @@ const RestaurantScreen = ({ route, navigation }) => {
                             <ScrollView style={styles.cartItemsList}>
                                 {cartItems.map(item => (
                                     <View key={item.id} style={[styles.cartItem, { borderBottomColor: colors.border }]}>
-                                        <View style={styles.cartItemLeft}>
-                                            <Text style={[styles.cartItemName, { color: colors.textPrimary }]}>
-                                                {item.name}
-                                            </Text>
-                                            <Text style={[styles.cartItemPrice, { color: colors.textMuted }]}>
-                                                ₹{item.price || item.comboPrice} × {item.quantity}
+                                        <View style={styles.menuItemDetails}>
+                                            <Text style={[styles.menuItemName, { color: colors.textPrimary }]}>{item.name}</Text>
+                                            <View style={styles.priceRow}>
+                                                <Text style={[styles.menuItemPrice, { color: colors.brand }]}>₹{item.price || item.comboPrice}</Text>
+                                                {item.stock !== undefined && (
+                                                    <Text style={[
+                                                        styles.stockText,
+                                                        { color: item.stock <= (item.lowStockThreshold || 5) ? '#EF4444' : colors.textSecondary }
+                                                    ]}>
+                                                        Stock: {item.stock}
+                                                    </Text>
+                                                )}
+                                            </View>
+                                            {item.description && <Text style={[styles.menuItemDesc, { color: colors.textSecondary }]}>{item.description}</Text>}
+                                            <Text style={[styles.cartItemPrice, { color: colors.textMuted, marginTop: 4 }]}>
+                                                Quantity: {item.quantity}
                                             </Text>
                                         </View>
                                         <View style={styles.cartItemRight}>
@@ -1523,6 +1580,42 @@ const styles = StyleSheet.create({
     listContent: {
         paddingBottom: 100,
     },
+    searchSection: {
+        paddingHorizontal: 16,
+        marginTop: 16,
+    },
+    headerTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+    },
+    searchContainer: {
+        flex: 1,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        height: 45,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    searchInput: {
+        flex: 1,
+        marginLeft: 8,
+        fontSize: 14,
+        paddingVertical: 8,
+    },
+    adminActions: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    smallActionButton: {
+        width: 45,
+        height: 45,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        borderWidth: 1,
+    },
     customerBanner: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -1634,17 +1727,26 @@ const styles = StyleSheet.create({
     },
     menuName: {
         fontSize: 16,
+        fontWeight: '700',
+    },
+    priceContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginTop: 4,
+    },
+    menuPrice: {
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    stockText: {
+        fontSize: 12,
         fontWeight: '600',
-        marginBottom: 4,
     },
     menuDescription: {
         fontSize: 13,
-        marginBottom: 8,
+        marginTop: 4,
         lineHeight: 18,
-    },
-    menuPrice: {
-        fontSize: 16,
-        fontWeight: '700',
     },
     originalPrice: {
         fontSize: 13,
@@ -1776,13 +1878,15 @@ const styles = StyleSheet.create({
         paddingHorizontal: 16,
         borderBottomWidth: 1,
     },
-    cartItemLeft: {
+    menuItemDetails: {
         flex: 1,
+        marginRight: 10,
     },
-    cartItemName: {
-        fontSize: 15,
-        fontWeight: '600',
-    },
+    menuItemName: { fontSize: 16, fontWeight: '700' },
+    priceRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 },
+    menuItemPrice: { fontSize: 15, fontWeight: '700' },
+    stockText: { fontSize: 12, fontWeight: '600' },
+    menuItemDesc: { fontSize: 12, marginTop: 4 },
     cartItemPrice: {
         fontSize: 13,
         marginTop: 2,
