@@ -57,7 +57,7 @@ const BORDER_COLORS = [
 
 const BAR_CATEGORY_IDS = CATEGORIES.map(c => c.id).filter(id => id !== 'all');
 
-const BarLoadingAnimation = require('../assets/food.json');
+const BarLoadingAnimation = require('../assets/room.json');
 
 const BarScreen = ({ route, navigation }) => {
     const { colors } = useTheme();
