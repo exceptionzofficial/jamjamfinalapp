@@ -8,8 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // const API_BASE_URL = 'http://10.0.2.2:3000/api';
 
 // Production URL
-// const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
-const API_BASE_URL = 'https://b738-2405-201-e02c-b031-d568-29eb-8694-6179.ngrok-free.app/api';
+const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
+// const API_BASE_URL = 'https://b738-2405-201-e02c-b031-d568-29eb-8694-6179.ngrok-free.app/api';
 
 // ============= UPI Payment Configuration =============
 // Change this to your UPI ID - used across all payment screens
