@@ -57,7 +57,18 @@ const RoomsPackageScreen = ({ navigation, route }) => {
         imageUrl: '',
         descriptions: [],
         subImages: [],
+        roomNumbers: [],
     });
+
+    const [newRoomNumber, setNewRoomNumber] = useState('');
+
+    // Booking states
+    const [selectedRoom, setSelectedRoom] = useState(null);
+    const [selectedRoomNumber, setSelectedRoomNumber] = useState(null);
+    const [showBookingModal, setShowBookingModal] = useState(false);
+    const [bookingType, setBookingType] = useState('daily');
+    const [duration, setDuration] = useState('1');
+    const [guestCount, setGuestCount] = useState('2');
 
     useEffect(() => {
         fetchRooms();
@@ -190,6 +201,7 @@ const RoomsPackageScreen = ({ navigation, route }) => {
                 imageUrl: room.imageUrl || '',
                 descriptions: room.descriptions || [],
                 subImages: room.subImages || [],
+                roomNumbers: room.roomNumbers || [],
             });
         } else {
             setEditingRoom(null);
@@ -202,8 +214,10 @@ const RoomsPackageScreen = ({ navigation, route }) => {
                 imageUrl: '',
                 descriptions: [],
                 subImages: [],
+                roomNumbers: [],
             });
         }
+        setNewRoomNumber('');
         setModalVisible(true);
     };
 
@@ -244,6 +258,140 @@ const RoomsPackageScreen = ({ navigation, route }) => {
         const newDescriptions = form.descriptions.filter((_, i) => i !== index);
         setForm({ ...form, descriptions: newDescriptions });
     };
+
+    const addRoomNumber = () => {
+        if (!newRoomNumber.trim()) return;
+        if (form.roomNumbers.includes(newRoomNumber.trim())) {
+            Alert.alert('Duplicate', 'This room number already exists');
+            return;
+        }
+        setForm({
+            ...form,
+            roomNumbers: [...form.roomNumbers, newRoomNumber.trim()],
+        });
+        setNewRoomNumber('');
+    };
+
+    const removeRoomNumber = (num) => {
+        setForm({
+            ...form,
+            roomNumbers: form.roomNumbers.filter(n => n !== num),
+        });
+    };
+
+    const handleSelectRoom = (room) => {
+        setSelectedRoom(room);
+        setSelectedRoomNumber(room.roomNumbers?.[0] || null);
+        setShowBookingModal(true);
+    };
+
+    const calculateTotal = () => {
+        if (!selectedRoom) return 0;
+        const durationNum = parseInt(duration) || 1;
+        // Current implementation uses room.price as base
+        return selectedRoom.price * durationNum;
+    };
+
+    const renderBookingModal = () => (
+        <Modal
+            visible={showBookingModal}
+            transparent
+            animationType="slide"
+            onRequestClose={() => setShowBookingModal(false)}
+        >
+            <View style={styles.bookingModalOverlay}>
+                <View style={[styles.bookingModalContainer, { backgroundColor: colors.card }]}>
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                        <View style={styles.bookingModalHeader}>
+                            <Text style={[styles.bookingModalTitle, { color: colors.textPrimary }]}>Book Room</Text>
+                            <TouchableOpacity onPress={() => setShowBookingModal(false)}>
+                                <Icon name="close" size={24} color={colors.textMuted} />
+                            </TouchableOpacity>
+                        </View>
+
+                        {selectedRoom && (
+                            <View style={[styles.selectedRoomCard, { backgroundColor: colors.background }]}>
+                                <View style={[styles.miniRoomIcon, { backgroundColor: colors.brand }]}>
+                                    <Icon name={selectedRoom.ac ? 'bed-king' : 'bed'} size={24} color="#FFFFFF" />
+                                </View>
+                                <View style={{ marginLeft: 12, flex: 1 }}>
+                                    <Text style={[styles.selectedRoomName, { color: colors.textPrimary }]}>{selectedRoom.name}</Text>
+                                    <Text style={[styles.selectedRoomType, { color: colors.textSecondary }]}>{selectedRoom.ac ? 'AC' : 'Non-AC'} | {selectedRoom.size}</Text>
+                                </View>
+                            </View>
+                        )}
+
+                        <Text style={styles.formSectionLabel}>Select Room Number</Text>
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={styles.roomNumbersRow}
+                        >
+                            {selectedRoom?.roomNumbers?.map((roomNum) => (
+                                <TouchableOpacity
+                                    key={roomNum}
+                                    style={[
+                                        styles.roomNumberChip,
+                                        {
+                                            backgroundColor: colors.background,
+                                            borderColor: colors.border,
+                                        },
+                                        selectedRoomNumber === roomNum && { backgroundColor: '#10B981', borderColor: '#10B981' }
+                                    ]}
+                                    onPress={() => setSelectedRoomNumber(roomNum)}
+                                >
+                                    <Text style={[
+                                        styles.roomNumberText,
+                                        { color: colors.textPrimary },
+                                        selectedRoomNumber === roomNum && { color: '#FFFFFF' }
+                                    ]}>
+                                        {roomNum}
+                                    </Text>
+                                </TouchableOpacity>
+                            )) || <Text style={{ color: colors.textMuted }}>No rooms available</Text>}
+                        </ScrollView>
+
+                        <View style={styles.bookingTotalSection}>
+                            <Text style={styles.bookingTotalLabel}>ROOM PRICE</Text>
+                            <Text style={styles.bookingTotalValue}>₹{selectedRoom?.price?.toLocaleString() || 0}</Text>
+                        </View>
+                    </ScrollView>
+
+                    <View style={styles.bookingModalActions}>
+                        <TouchableOpacity
+                            style={[styles.bookingCancelBtn, { borderColor: colors.border }]}
+                            onPress={() => setShowBookingModal(false)}
+                        >
+                            <Text style={styles.bookingCancelText}>CANCEL</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.bookingConfirmBtn}
+                            onPress={() => {
+                                if (!selectedRoomNumber) {
+                                    Alert.alert('Selection Error', 'Please select a room number');
+                                    return;
+                                }
+                                setShowBookingModal(false);
+                                navigation.navigate('RoomCheckout', {
+                                    customer,
+                                    room: { ...selectedRoom, selectedRoomNumber },
+                                    bookingDetails: {
+                                        type: bookingType,
+                                        duration: parseInt(duration) || 1,
+                                        guests: parseInt(guestCount) || 1,
+                                        roomNumber: selectedRoomNumber
+                                    }
+                                });
+                            }}
+                        >
+                            <Icon name="check-circle" size={20} color="#FFFFFF" />
+                            <Text style={styles.bookingConfirmText}>GO TO CHECKOUT</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        </Modal>
+    );
 
     const renderPackageItem = ({ item, index }) => (
         <SlideUp style={styles.cardWrapper} delay={index * 100}>
@@ -355,7 +503,7 @@ const RoomsPackageScreen = ({ navigation, route }) => {
                 <TouchableOpacity
                     style={styles.bookButton}
                     activeOpacity={0.8}
-                    onPress={() => navigation.navigate('RoomCheckout', { customer, room: item })}
+                    onPress={() => handleSelectRoom(item)}
                 >
                     <Text style={styles.bookButtonText}>BOOK NOW</Text>
                     <Icon name="chevron-right" size={24} color="#FFFFFF" />
@@ -534,6 +682,33 @@ const RoomsPackageScreen = ({ navigation, route }) => {
                                 </TouchableOpacity>
                             </View>
 
+                            <Text style={styles.label}>Manage Room Numbers</Text>
+                            <View style={styles.roomNumInputRow}>
+                                <TextInput
+                                    style={[styles.input, { flex: 1 }]}
+                                    value={newRoomNumber}
+                                    onChangeText={setNewRoomNumber}
+                                    placeholder="e.g. V-101"
+                                />
+                                <TouchableOpacity style={styles.addNumBtn} onPress={addRoomNumber}>
+                                    <Icon name="plus" size={24} color="#FFFFFF" />
+                                </TouchableOpacity>
+                            </View>
+
+                            <View style={styles.roomNumChipsContainer}>
+                                {form.roomNumbers.map((num) => (
+                                    <View key={num} style={styles.roomNumBadge}>
+                                        <Text style={styles.roomNumBadgeText}>{num}</Text>
+                                        <TouchableOpacity onPress={() => removeRoomNumber(num)}>
+                                            <Icon name="close-circle" size={16} color="#FFFFFF" style={{ marginLeft: 5 }} />
+                                        </TouchableOpacity>
+                                    </View>
+                                ))}
+                                {form.roomNumbers.length === 0 && (
+                                    <Text style={{ fontSize: 12, color: '#999', fontStyle: 'italic' }}>No room numbers added yet</Text>
+                                )}
+                            </View>
+
                             <View style={styles.descriptionHeader}>
                                 <Text style={styles.label}>Extra Descriptions</Text>
                                 <TouchableOpacity style={styles.addDescBtn} onPress={addDescription}>
@@ -567,6 +742,7 @@ const RoomsPackageScreen = ({ navigation, route }) => {
                     </View>
                 </KeyboardAvoidingView>
             </Modal>
+            {renderBookingModal()}
         </View>
     );
 };
@@ -1020,6 +1196,182 @@ const styles = StyleSheet.create({
         fontSize: 18,
         fontWeight: '700',
         textAlign: 'center',
+    },
+    // Booking Modal Styles
+    bookingModalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        justifyContent: 'flex-end',
+    },
+    bookingModalContainer: {
+        borderTopLeftRadius: 30,
+        borderTopRightRadius: 30,
+        padding: 24,
+        maxHeight: '85%',
+        elevation: 10,
+    },
+    bookingModalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    bookingModalTitle: {
+        fontSize: 22,
+        fontWeight: '900',
+    },
+    selectedRoomCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 16,
+        marginBottom: 20,
+    },
+    miniRoomIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    selectedRoomName: {
+        fontSize: 18,
+        fontWeight: '800',
+    },
+    selectedRoomType: {
+        fontSize: 13,
+        marginTop: 2,
+    },
+    formSectionLabel: {
+        fontSize: 14,
+        fontWeight: '700',
+        marginBottom: 10,
+        marginTop: 15,
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    roomNumbersRow: {
+        paddingVertical: 5,
+        gap: 8,
+    },
+    roomNumberChip: {
+        paddingHorizontal: 20,
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderWidth: 2,
+        marginRight: 10,
+    },
+    roomNumberText: {
+        fontSize: 16,
+        fontWeight: '800',
+    },
+    bookingTypeRow: {
+        flexDirection: 'row',
+        gap: 12,
+    },
+    typeOption: {
+        flex: 1,
+        paddingVertical: 14,
+        borderRadius: 12,
+        alignItems: 'center',
+        backgroundColor: 'rgba(0,0,0,0.05)',
+        borderWidth: 1,
+        borderColor: 'rgba(0,0,0,0.1)',
+    },
+    typeOptionText: {
+        fontSize: 15,
+        fontWeight: '700',
+    },
+    bookingInput: {
+        borderWidth: 2,
+        borderRadius: 12,
+        padding: 14,
+        fontSize: 16,
+        fontWeight: '600',
+    },
+    bookingTotalSection: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 25,
+        paddingTop: 20,
+        borderTopWidth: 1,
+        borderTopColor: 'rgba(0,0,0,0.1)',
+    },
+    bookingTotalLabel: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#666',
+    },
+    bookingTotalValue: {
+        fontSize: 28,
+        fontWeight: '900',
+        color: '#10B981',
+    },
+    bookingModalActions: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 25,
+    },
+    bookingCancelBtn: {
+        flex: 1,
+        paddingVertical: 16,
+        borderRadius: 15,
+        alignItems: 'center',
+        borderWidth: 2,
+    },
+    bookingCancelText: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#666',
+    },
+    bookingConfirmBtn: {
+        flex: 2,
+        flexDirection: 'row',
+        backgroundColor: '#10B981',
+        paddingVertical: 16,
+        borderRadius: 15,
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 8,
+    },
+    bookingConfirmText: {
+        color: '#FFFFFF',
+        fontSize: 15,
+        fontWeight: '900',
+    },
+    roomNumInputRow: {
+        flexDirection: 'row',
+        gap: 10,
+        marginBottom: 10,
+    },
+    addNumBtn: {
+        backgroundColor: '#10B981',
+        borderRadius: 10,
+        width: 48,
+        height: 48,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    roomNumChipsContainer: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginBottom: 15,
+        padding: 5,
+    },
+    roomNumBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: '#333',
+        paddingHorizontal: 10,
+        paddingVertical: 5,
+        borderRadius: 20,
+    },
+    roomNumBadgeText: {
+        color: '#FFF',
+        fontSize: 12,
+        fontWeight: 'bold',
     },
 });
 

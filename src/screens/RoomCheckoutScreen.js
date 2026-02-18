@@ -165,6 +165,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
                 items: [
                     {
                         name: `${room.name} (${pricing.days} Days)`,
+                        roomNumber: room.selectedRoomNumber,
                         price: room.price,
                         days: pricing.days,
                         extraBeds: extraBeds,
@@ -335,6 +336,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
                                 <View>
                                     <Text style={[styles.summaryRoom, { color: colors.textPrimary }]}>{room.name}</Text>
                                     <Text style={styles.summarySub}>{room.ac ? 'Air Conditioned' : 'Non-AC'} • {pricing.days} Days</Text>
+                                    <Text style={[styles.summarySub, { color: colors.brand, fontWeight: '700' }]}>Room No: {room.selectedRoomNumber}</Text>
                                 </View>
                                 <Text style={[styles.summaryAmount, { color: colors.brand }]}>₹{taxInfo.total}</Text>
                             </View>

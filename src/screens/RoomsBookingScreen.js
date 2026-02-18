@@ -15,31 +15,43 @@ import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn } from '../utils/animations';
 
+import * as api from '../utils/api';
+
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
-
-// Sample Room Data (Frontend Only)
-const ROOMS = [
-    { id: 'room_1', name: 'Deluxe Suite', type: 'AC', capacity: 4, pricePerHour: 500, pricePerDay: 3500, available: true, icon: 'bed-king' },
-    { id: 'room_2', name: 'Premium Room', type: 'AC', capacity: 2, pricePerHour: 350, pricePerDay: 2500, available: true, icon: 'bed-queen' },
-    { id: 'room_3', name: 'Standard Room', type: 'Non-AC', capacity: 2, pricePerHour: 200, pricePerDay: 1500, available: false, icon: 'bed' },
-    { id: 'room_4', name: 'Family Suite', type: 'AC', capacity: 6, pricePerHour: 700, pricePerDay: 5000, available: true, icon: 'home-group' },
-    { id: 'room_5', name: 'Cottage', type: 'AC', capacity: 4, pricePerHour: 600, pricePerDay: 4000, available: true, icon: 'home' },
-];
 
 const RoomsBookingScreen = ({ navigation, route }) => {
     const { colors } = useTheme();
     const customer = route?.params?.customer;
 
+    const [rooms, setRooms] = useState([]);
     const [selectedRoom, setSelectedRoom] = useState(null);
+    const [selectedRoomNumber, setSelectedRoomNumber] = useState(null);
     const [showBookingModal, setShowBookingModal] = useState(false);
-    const [bookingType, setBookingType] = useState('hourly'); // hourly or daily
+    const [bookingType, setBookingType] = useState('daily'); // hourly or daily
     const [duration, setDuration] = useState('1');
     const [guestCount, setGuestCount] = useState('2');
+    const [isLoading, setIsLoading] = useState(true);
+
+    // Fetch rooms on mount
+    React.useEffect(() => {
+        const loadRooms = async () => {
+            try {
+                const data = await api.getRooms();
+                console.log('DEBUG: Fetched rooms:', JSON.stringify(data));
+                setRooms(data);
+            } catch (error) {
+                console.error('Error fetching rooms:', error);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+        loadRooms();
+    }, []);
 
     const handleSelectRoom = (room) => {
-        if (!room.available) return;
         setSelectedRoom(room);
+        setSelectedRoomNumber(room.roomNumbers?.[0] || null);
         setShowBookingModal(true);
     };
 
@@ -55,36 +67,32 @@ const RoomsBookingScreen = ({ navigation, route }) => {
             <TouchableOpacity
                 style={[
                     styles.roomCard,
-                    { backgroundColor: colors.card, borderColor: item.available ? colors.border : '#EF4444' },
-                    !item.available && styles.unavailableCard,
+                    { backgroundColor: colors.card, borderColor: colors.border },
                 ]}
                 onPress={() => handleSelectRoom(item)}
                 activeOpacity={0.8}
             >
-                <View style={[styles.roomIconContainer, { backgroundColor: item.available ? '#10B981' : '#EF4444' }]}>
-                    <Icon name={item.icon} size={32} color="#FFFFFF" />
+                <View style={[styles.roomIconContainer, { backgroundColor: colors.brand }]}>
+                    <Icon name={item.icon || (item.ac ? 'bed-king' : 'bed')} size={32} color="#FFFFFF" />
                 </View>
                 <View style={styles.roomInfo}>
                     <Text style={[styles.roomName, { color: colors.textPrimary }]}>{item.name}</Text>
+                    {item.tamilName && (
+                        <Text style={[styles.roomTamilName, { color: colors.textSecondary }]}>{item.tamilName}</Text>
+                    )}
                     <View style={styles.roomMeta}>
-                        <View style={[styles.typeBadge, { backgroundColor: item.type === 'AC' ? '#3B82F6' : '#F59E0B' }]}>
-                            <Text style={styles.typeText}>{item.type}</Text>
+                        <View style={[styles.typeBadge, { backgroundColor: item.ac ? '#3B82F6' : '#F59E0B' }]}>
+                            <Text style={styles.typeText}>{item.ac ? 'AC' : 'Non-AC'}</Text>
                         </View>
-                        <Icon name="account-group" size={14} color={colors.textMuted} />
-                        <Text style={[styles.capacityText, { color: colors.textMuted }]}>{item.capacity} Guests</Text>
+                        <Icon name="ruler-square" size={14} color={colors.textMuted} />
+                        <Text style={[styles.capacityText, { color: colors.textMuted }]}>{item.size}</Text>
                     </View>
                     <View style={styles.priceRow}>
-                        <Text style={[styles.priceLabel, { color: colors.textSecondary }]}>₹{item.pricePerHour}/hr</Text>
-                        <Text style={[styles.priceLabel, { color: colors.textSecondary }]}>₹{item.pricePerDay}/day</Text>
+                        <Text style={[styles.priceLabel, { color: colors.brand }]}>₹{item.price}/day</Text>
+                        <Text style={[styles.priceLabel, { color: colors.textSecondary }]}>{item.roomNumbers?.length || 0} Rooms Avail</Text>
                     </View>
                 </View>
-                {item.available ? (
-                    <Icon name="chevron-right" size={24} color={colors.textMuted} />
-                ) : (
-                    <View style={styles.unavailableBadge}>
-                        <Text style={styles.unavailableText}>Booked</Text>
-                    </View>
-                )}
+                <Icon name="chevron-right" size={24} color={colors.textMuted} />
             </TouchableOpacity>
         </SlideUp>
     );
@@ -108,53 +116,48 @@ const RoomsBookingScreen = ({ navigation, route }) => {
 
                         {selectedRoom && (
                             <View style={[styles.selectedRoomCard, { backgroundColor: colors.background }]}>
-                                <Icon name={selectedRoom.icon} size={28} color={colors.brand} />
+                                <Icon name={selectedRoom.icon || 'bed'} size={28} color={colors.brand} />
                                 <View style={{ marginLeft: 12, flex: 1 }}>
                                     <Text style={[styles.selectedRoomName, { color: colors.textPrimary }]}>{selectedRoom.name}</Text>
-                                    <Text style={[styles.selectedRoomType, { color: colors.textSecondary }]}>{selectedRoom.type} | {selectedRoom.capacity} Guests</Text>
+                                    <Text style={[styles.selectedRoomType, { color: colors.textSecondary }]}>{selectedRoom.ac ? 'AC' : 'Non-AC'} | {selectedRoom.size}</Text>
                                 </View>
                             </View>
                         )}
 
-                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Booking Type</Text>
-                        <View style={styles.toggleRow}>
-                            <TouchableOpacity
-                                style={[styles.toggleBtn, bookingType === 'hourly' && { backgroundColor: colors.brand }]}
-                                onPress={() => setBookingType('hourly')}
-                            >
-                                <Text style={[styles.toggleText, bookingType === 'hourly' && { color: '#FFFFFF' }]}>Hourly</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.toggleBtn, bookingType === 'daily' && { backgroundColor: colors.brand }]}
-                                onPress={() => setBookingType('daily')}
-                            >
-                                <Text style={[styles.toggleText, bookingType === 'daily' && { color: '#FFFFFF' }]}>Daily</Text>
-                            </TouchableOpacity>
-                        </View>
-
-                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Duration ({bookingType === 'hourly' ? 'Hours' : 'Days'})</Text>
-                        <TextInput
-                            style={[styles.input, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
-                            value={duration}
-                            onChangeText={setDuration}
-                            keyboardType="numeric"
-                            placeholder="Enter duration"
-                            placeholderTextColor={colors.textMuted}
-                        />
-
-                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Number of Guests</Text>
-                        <TextInput
-                            style={[styles.input, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
-                            value={guestCount}
-                            onChangeText={setGuestCount}
-                            keyboardType="numeric"
-                            placeholder="Enter guest count"
-                            placeholderTextColor={colors.textMuted}
-                        />
+                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Select Room Number</Text>
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            contentContainerStyle={[styles.roomNumbersRow, { paddingBottom: 10 }]}
+                        >
+                            {selectedRoom?.roomNumbers?.map((roomNum) => (
+                                <TouchableOpacity
+                                    key={roomNum}
+                                    style={[
+                                        styles.roomNumberChip,
+                                        {
+                                            backgroundColor: colors.background,
+                                            borderColor: colors.border,
+                                            marginRight: 8
+                                        },
+                                        selectedRoomNumber === roomNum && { backgroundColor: colors.brand, borderColor: colors.brand }
+                                    ]}
+                                    onPress={() => setSelectedRoomNumber(roomNum)}
+                                >
+                                    <Text style={[
+                                        styles.roomNumberText,
+                                        { color: colors.textPrimary },
+                                        selectedRoomNumber === roomNum && { color: '#FFFFFF' }
+                                    ]}>
+                                        {roomNum}
+                                    </Text>
+                                </TouchableOpacity>
+                            )) || <Text style={{ color: colors.textMuted }}>No rooms available</Text>}
+                        </ScrollView>
 
                         <View style={[styles.totalContainer, { borderTopColor: colors.border }]}>
-                            <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Total Amount</Text>
-                            <Text style={[styles.totalValue, { color: colors.brand }]}>₹{calculateTotal()}</Text>
+                            <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Room Price</Text>
+                            <Text style={[styles.totalValue, { color: colors.brand }]}>₹{selectedRoom?.price || calculateTotal()}</Text>
                         </View>
                     </ScrollView>
 
@@ -165,7 +168,22 @@ const RoomsBookingScreen = ({ navigation, route }) => {
                         >
                             <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.confirmBtn}>
+                        <TouchableOpacity
+                            style={styles.confirmBtn}
+                            onPress={() => {
+                                setShowBookingModal(false);
+                                navigation.navigate('RoomCheckout', {
+                                    room: { ...selectedRoom, selectedRoomNumber },
+                                    customer,
+                                    bookingDetails: {
+                                        type: bookingType,
+                                        duration: parseInt(duration) || 1,
+                                        guests: parseInt(guestCount) || 1,
+                                        roomNumber: selectedRoomNumber
+                                    }
+                                });
+                            }}
+                        >
                             <Icon name="check" size={18} color="#FFFFFF" />
                             <Text style={styles.confirmBtnText}>Confirm Booking</Text>
                         </TouchableOpacity>
@@ -185,13 +203,15 @@ const RoomsBookingScreen = ({ navigation, route }) => {
             </TouchableOpacity>
 
             <FlatList
-                data={ROOMS}
+                data={rooms}
                 keyExtractor={(item) => item.id}
                 renderItem={renderRoomCard}
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
+                refreshing={isLoading}
+                onRefresh={() => {/* Implement refresh if needed */ }}
                 ListHeaderComponent={
-                    <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Available Rooms</Text>
+                    <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Available Packages</Text>
                 }
             />
 
@@ -231,6 +251,10 @@ const styles = StyleSheet.create({
     capacityText: { fontSize: 12, marginLeft: 4 },
     priceRow: { flexDirection: 'row', gap: 16, marginTop: 8 },
     priceLabel: { fontSize: 13, fontWeight: '600' },
+    roomTamilName: { fontSize: 14, marginBottom: 4 },
+    roomNumbersRow: { gap: 8, paddingVertical: 8 },
+    roomNumberChip: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 10, borderWidth: 1 },
+    roomNumberText: { fontWeight: '600' },
     unavailableBadge: { backgroundColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
     unavailableText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
