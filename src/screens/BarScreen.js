@@ -30,6 +30,7 @@ import {
     getUPIString,
 } from '../utils/api';
 import { SlideUp, FadeIn } from '../utils/animations';
+import { printKOT } from '../utils/PrinterService';
 
 const { width } = Dimensions.get('window');
 const isTablet = width >= 768;
@@ -46,6 +47,7 @@ const CATEGORIES = [
     { id: 'gin', name: 'Gin', icon: 'bottle-wine' },
     { id: 'rum', name: 'Rum', icon: 'bottle-wine' },
     { id: 'snacks', name: 'Snacks', icon: 'food-variant' },
+    { id: 'kitchen', name: 'Kitchen', icon: 'silverware-fork-knife' },
 ];
 
 const BORDER_COLORS = [
@@ -197,6 +199,7 @@ const BarScreen = ({ route, navigation }) => {
                 items: cartItems.map(item => ({
                     itemId: item.itemId,
                     name: item.displayName,
+                    category: item.category || '',
                     price: item.displayPrice,
                     quantity: item.quantity,
                     subtotal: item.subtotal,
@@ -213,6 +216,25 @@ const BarScreen = ({ route, navigation }) => {
             };
 
             await saveBarOrder(order);
+
+            // Generate KOT for kitchen items
+            const kitchenItems = cartItems.filter(ci => {
+                const cat = (ci.category || '').toLowerCase();
+                return cat === 'kitchen';
+            });
+            if (kitchenItems.length > 0) {
+                const kotOrder = {
+                    tableNo: tableNo || 'Bar',
+                    orderType: 'dining',
+                    items: kitchenItems.map(ci => ({
+                        name: ci.displayName,
+                        quantity: ci.quantity,
+                    })),
+                    timestamp: new Date().toISOString(),
+                };
+                await printKOT(kotOrder);
+            }
+
             Alert.alert('Success', 'Order placed successfully!', [
                 { text: 'OK', onPress: () => navigation.goBack() }
             ]);
@@ -279,7 +301,8 @@ const BarScreen = ({ route, navigation }) => {
 
     const renderMenuItem = ({ item, index }) => {
         const category = item.category ? item.category.toLowerCase().trim() : '';
-        const isSpirit = ['whiskey', 'rum', 'vodka', 'gin', 'brandy', 'beer', 'wine'].includes(category) || !!item.shotPrice;
+        const isSpirit = ['whiskey', 'rum', 'vodka', 'gin', 'brandy', 'beer', 'wine'].includes(category) ||
+            (!!item.shotPrice && !['kitchen', 'snacks', 'cocktails'].includes(category));
 
         const shotId = `${item.id}:Shot`;
         const bottleId = `${item.id}:Bottle`;
@@ -293,8 +316,8 @@ const BarScreen = ({ route, navigation }) => {
         return (
             <SlideUp delay={index * 30}>
                 <TouchableOpacity
-                    onPress={() => !isSpirit && handleItemPress(item)}
-                    activeOpacity={isSpirit ? 1 : 0.7}
+                    onPress={() => (isEditing || !isSpirit) && handleItemPress(item)}
+                    activeOpacity={isEditing ? 0.7 : (isSpirit ? 1 : 0.7)}
                 >
                     <View style={[styles.card, { borderColor: color, backgroundColor: colors.card, paddingVertical: 8 }]}>
                         <View style={styles.cardContent}>
@@ -310,11 +333,16 @@ const BarScreen = ({ route, navigation }) => {
                                             { color: item.stock <= (item.lowStockThreshold || 5) ? '#EF4444' : '#10B981', fontSize: 13, fontWeight: '700' }
                                         ]}>
                                             {(() => {
+                                                if (category === 'kitchen' || category === 'snacks' || category === 'cocktails') {
+                                                    return `Stock: ${item.stock}`;
+                                                }
                                                 const vol = item.volumePerUnit || 750;
-                                                const totalMl = item.stock;
+                                                const totalMl = Math.max(0, item.stock || 0);
                                                 const bottles = Math.floor(totalMl / vol);
-                                                const ml = totalMl % vol;
-                                                return `Stock: ${bottles} Btl ${ml > 0 ? `${ml}ml` : ''}`;
+                                                const ml = Math.round(totalMl % vol);
+                                                if (bottles === 0 && ml === 0) return 'Stock: 0';
+                                                if (bottles === 0) return `Stock: ${ml}ml`;
+                                                return `Stock: ${bottles} Btl${ml > 0 ? ` ${ml}ml` : ''}`;
                                             })()}
                                         </Text>
                                     </View>
@@ -565,8 +593,8 @@ const BarScreen = ({ route, navigation }) => {
                         <TextInput placeholder="Item Name" placeholderTextColor={colors.textMuted} style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]} value={menuName} onChangeText={setMenuName} />
                         <TextInput placeholder="Price" placeholderTextColor={colors.textMuted} style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginTop: 10 }]} value={menuPrice} onChangeText={setMenuPrice} keyboardType="numeric" />
                         <TextInput placeholder="Description" placeholderTextColor={colors.textMuted} style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginTop: 10 }]} value={menuDescription} onChangeText={setMenuDescription} />
-                        <TextInput placeholder="Stock (in ml)" placeholderTextColor={colors.textMuted} style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginTop: 10 }]} value={menuStock} onChangeText={setMenuStock} keyboardType="numeric" />
-                        {['whiskey', 'rum', 'vodka', 'gin', 'brandy'].includes(menuCategory?.toLowerCase()) && (
+                        <TextInput placeholder={menuCategory === 'kitchen' || menuCategory === 'snacks' ? 'Stock (quantity)' : 'Stock (in ml)'} placeholderTextColor={colors.textMuted} style={[styles.input, { color: colors.textPrimary, borderColor: colors.border, marginTop: 10 }]} value={menuStock} onChangeText={setMenuStock} keyboardType="numeric" />
+                        {['whiskey', 'rum', 'vodka', 'gin', 'brandy', 'beer', 'wine'].includes(menuCategory?.toLowerCase()) && (
                             <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
                                 <TextInput placeholder="Shot Price" placeholderTextColor={colors.textMuted} style={[styles.input, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={menuShotPrice} onChangeText={setMenuShotPrice} keyboardType="numeric" />
                                 <TextInput placeholder="Btl Volume (ml)" placeholderTextColor={colors.textMuted} style={[styles.input, { flex: 1, color: colors.textPrimary, borderColor: colors.border }]} value={menuVolume} onChangeText={setMenuVolume} keyboardType="numeric" />

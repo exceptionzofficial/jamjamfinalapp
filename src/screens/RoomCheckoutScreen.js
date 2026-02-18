@@ -35,6 +35,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
     const [loading, setLoading] = useState(false);
     const [uploadingAadhar, setUploadingAadhar] = useState(false);
     const [uploadingPan, setUploadingPan] = useState(false);
+    const [taxPercent, setTaxPercent] = useState(0);
 
     // Form State
     const [aadharImage, setAadharImage] = useState(null);
@@ -65,6 +66,20 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
             total: roomTotal + extraBedTotal
         };
     }, [room, checkInDate, checkOutDate, extraBeds]);
+
+    // Tax calculation
+    const taxInfo = useMemo(() => {
+        return api.calculateTax(pricing.total, taxPercent);
+    }, [pricing.total, taxPercent]);
+
+    // Fetch tax on mount
+    useEffect(() => {
+        const loadTax = async () => {
+            const tax = await api.getTaxByService('rooms');
+            setTaxPercent(tax || 0);
+        };
+        loadTax();
+    }, []);
 
     const showDatePicker = (type) => {
         setPickerType(type);
@@ -160,7 +175,10 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
                         subtotal: pricing.total
                     }
                 ],
-                totalAmount: pricing.total,
+                subtotal: taxInfo.subtotal,
+                taxPercent: taxInfo.taxPercent,
+                taxAmount: taxInfo.taxAmount,
+                totalAmount: taxInfo.total,
                 paymentMethod: selectedPaymentMethod === 'cash' ? 'Cash' : 'UPI',
                 service: 'ROOM',
                 status: 'CONFIRMED',
@@ -318,7 +336,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
                                     <Text style={[styles.summaryRoom, { color: colors.textPrimary }]}>{room.name}</Text>
                                     <Text style={styles.summarySub}>{room.ac ? 'Air Conditioned' : 'Non-AC'} • {pricing.days} Days</Text>
                                 </View>
-                                <Text style={[styles.summaryAmount, { color: colors.brand }]}>₹{pricing.total}</Text>
+                                <Text style={[styles.summaryAmount, { color: colors.brand }]}>₹{taxInfo.total}</Text>
                             </View>
                             <View style={[styles.summaryDivider, { backgroundColor: colors.border }]} />
                             <View style={styles.summaryDetail}>
@@ -329,6 +347,12 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
                                 <View style={styles.summaryDetail}>
                                     <Text style={styles.detailLabel}>Extra Bed (₹1500 x {extraBeds} x {pricing.days})</Text>
                                     <Text style={[styles.detailValue, { color: colors.textPrimary }]}>₹{pricing.extraBedTotal}</Text>
+                                </View>
+                            )}
+                            {taxInfo.taxPercent > 0 && (
+                                <View style={styles.summaryDetail}>
+                                    <Text style={styles.detailLabel}>Tax ({taxInfo.taxPercent}%)</Text>
+                                    <Text style={[styles.detailValue, { color: colors.textSecondary }]}>₹{taxInfo.taxAmount}</Text>
                                 </View>
                             )}
                         </View>
@@ -348,8 +372,8 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
                         </View>
                         {selectedPaymentMethod === 'upi' && (
                             <View style={styles.qrSection}>
-                                <QRCode value={api.getUPIString(pricing.total)} size={160} />
-                                <Text style={[styles.qrHint, { color: colors.textPrimary }]}>Pay ₹{pricing.total} with any UPI app</Text>
+                                <QRCode value={api.getUPIString(taxInfo.total)} size={160} />
+                                <Text style={[styles.qrHint, { color: colors.textPrimary }]}>Pay ₹{taxInfo.total} with any UPI app</Text>
                             </View>
                         )}
                         <TouchableOpacity style={[styles.confirmBtn, { backgroundColor: colors.brand }]} onPress={handleConfirmBooking} disabled={loading}>
