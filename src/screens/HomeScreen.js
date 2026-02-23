@@ -252,7 +252,14 @@ const HomeScreen = ({ navigation }) => {
                         <Icon name="arrow-left" size={24} color={colors.textPrimary} />
                     </TouchableOpacity>
                     <View style={styles.customerInfo}>
-                        <Text style={[styles.customerName, { color: colors.textPrimary }]}>{selectedCustomer.name}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <Text style={[styles.customerName, { color: colors.textPrimary }]}>{selectedCustomer.name}</Text>
+                            {selectedCustomer.isVisitor && (
+                                <View style={{ backgroundColor: '#F59E0B', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 }}>
+                                    <Text style={{ color: '#FFFFFF', fontSize: 10, fontWeight: '900' }}>VISITOR</Text>
+                                </View>
+                            )}
+                        </View>
                         <Text style={[styles.customerMobile, { color: colors.textSecondary }]}>{selectedCustomer.mobile}</Text>
                     </View>
                     <View style={styles.headerActions}>

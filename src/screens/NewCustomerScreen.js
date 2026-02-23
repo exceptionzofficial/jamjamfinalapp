@@ -9,11 +9,14 @@ import {
     Alert,
     KeyboardAvoidingView,
     Platform,
+    Modal,
+    ActivityIndicator,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
+import QRCode from 'react-native-qrcode-svg';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
-import { saveCustomer, formatDateTime } from '../utils/api';
+import { saveCustomer, formatDateTime, getUPIString, saveBooking } from '../utils/api';
 import { SlideUp, FadeIn, ScaleIn } from '../utils/animations';
 
 const NewCustomerScreen = ({ navigation }) => {
@@ -21,10 +24,16 @@ const NewCustomerScreen = ({ navigation }) => {
     const [name, setName] = useState('');
     const [mobile, setMobile] = useState('');
     const [vehicleNo, setVehicleNo] = useState('');
+    const [entryFee, setEntryFee] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [suggestions, setSuggestions] = useState([]);
     const [showSuggestions, setShowSuggestions] = useState(false);
     const [existingCustomer, setExistingCustomer] = useState(null);
+
+    // Payment states
+    const [showPaymentModal, setShowPaymentModal] = useState(false);
+    const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+
     const checkinTime = new Date().toISOString();
 
     const fetchSuggestions = async (text) => {
@@ -72,9 +81,22 @@ const NewCustomerScreen = ({ navigation }) => {
     const handleRegister = async () => {
         if (!validateForm()) return;
 
+        if (entryFee.trim() && !isNaN(Number(entryFee)) && Number(entryFee) > 0) {
+            setShowPaymentModal(true);
+            setSelectedPaymentMethod(null);
+        } else {
+            performRegistration('Cash');
+        }
+    };
+
+    const performRegistration = async (paymentMethod = 'Cash') => {
         setIsLoading(true);
+        setShowPaymentModal(false);
         try {
-            const { saveCustomer, updateCustomer } = require('../utils/api');
+            const { updateCustomer } = require('../utils/api');
+
+            let customerId;
+            let currentCustomer;
 
             if (existingCustomer) {
                 // Check if already checked-in
@@ -85,12 +107,13 @@ const NewCustomerScreen = ({ navigation }) => {
                 }
 
                 // Update status to checked-in
-                const customerId = existingCustomer.customerId || existingCustomer.id;
-                await updateCustomer(customerId, {
+                customerId = existingCustomer.customerId || existingCustomer.id;
+                currentCustomer = await updateCustomer(customerId, {
                     status: 'checked-in',
                     checkinTime: new Date().toISOString(),
                     name: name.trim(),
                     vehicleNo: vehicleNo.trim() || null,
+                    isVisitor: entryFee.trim() ? true : existingCustomer.isVisitor,
                 });
 
                 Alert.alert(
@@ -103,15 +126,33 @@ const NewCustomerScreen = ({ navigation }) => {
                     name: name.trim(),
                     mobile: mobile.trim(),
                     vehicleNo: vehicleNo.trim() || null,
+                    isVisitor: !!entryFee.trim(),
                 };
 
-                const savedCustomer = await saveCustomer(customer);
+                currentCustomer = await saveCustomer(customer);
+                customerId = currentCustomer.customerId;
 
                 Alert.alert(
                     'Success',
-                    `Customer registered successfully!\n\nID: ${savedCustomer.customerId}`,
+                    `Customer registered successfully!\n\nID: ${currentCustomer.customerId}`,
                     [{ text: 'OK', onPress: () => navigation.goBack() }]
                 );
+            }
+
+            // Handle Entry Fee Booking
+            if (entryFee.trim() && customerId) {
+                const amount = Number(entryFee);
+                if (!isNaN(amount) && amount > 0) {
+                    await saveBooking({
+                        customerId,
+                        customerName: name.trim(),
+                        customerMobile: mobile.trim(),
+                        items: [{ name: 'Entry Fee', price: amount, quantity: 1 }],
+                        totalAmount: amount,
+                        paymentMethod: paymentMethod === 'qr' ? 'UPI/QR' : 'Cash',
+                        service: 'Entry Fee',
+                    });
+                }
             }
         } catch (error) {
             console.error('Registration error:', error);
@@ -124,6 +165,85 @@ const NewCustomerScreen = ({ navigation }) => {
             setIsLoading(false);
         }
     };
+
+    const renderPaymentModal = () => (
+        <Modal
+            visible={showPaymentModal}
+            transparent={true}
+            animationType="fade"
+            onRequestClose={() => setShowPaymentModal(false)}
+        >
+            <View style={styles.modalOverlay}>
+                <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+                    <View style={styles.modalHeader}>
+                        <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Pay Entry Fee</Text>
+                        <TouchableOpacity onPress={() => setShowPaymentModal(false)}>
+                            <Icon name="close" size={24} color={colors.textMuted} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <View style={styles.amountContainer}>
+                        <Text style={[styles.amountLabel, { color: colors.textSecondary }]}>Total Amount</Text>
+                        <Text style={[styles.amountValue, { color: colors.brand }]}>₹{entryFee}</Text>
+                    </View>
+
+                    <Text style={[styles.paymentLabel, { color: colors.textPrimary }]}>Select Payment Method</Text>
+
+                    <View style={styles.paymentMethods}>
+                        <TouchableOpacity
+                            style={[
+                                styles.paymentMethodBtn,
+                                { borderColor: colors.border },
+                                selectedPaymentMethod === 'cash' && { borderColor: colors.brand, backgroundColor: colors.surfaceLight }
+                            ]}
+                            onPress={() => setSelectedPaymentMethod('cash')}
+                        >
+                            <Icon name="cash-multiple" size={24} color={selectedPaymentMethod === 'cash' ? colors.brand : colors.textMuted} />
+                            <Text style={[styles.paymentMethodText, { color: colors.textPrimary }]}>Cash</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[
+                                styles.paymentMethodBtn,
+                                { borderColor: colors.border },
+                                selectedPaymentMethod === 'qr' && { borderColor: colors.brand, backgroundColor: colors.surfaceLight }
+                            ]}
+                            onPress={() => setSelectedPaymentMethod('qr')}
+                        >
+                            <Icon name="qrcode-scan" size={24} color={selectedPaymentMethod === 'qr' ? colors.brand : colors.textMuted} />
+                            <Text style={[styles.paymentMethodText, { color: colors.textPrimary }]}>UPI / QR</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {selectedPaymentMethod === 'qr' && (
+                        <View style={styles.qrContainer}>
+                            <View style={styles.qrWrapper}>
+                                <QRCode
+                                    value={getUPIString(entryFee)}
+                                    size={180}
+                                    color="#000000"
+                                    backgroundColor="#FFFFFF"
+                                />
+                            </View>
+                            <Text style={[styles.qrHint, { color: colors.textSecondary }]}>Scan to pay via any UPI App</Text>
+                        </View>
+                    )}
+
+                    <TouchableOpacity
+                        style={[
+                            styles.confirmBtn,
+                            { backgroundColor: colors.brand },
+                            !selectedPaymentMethod && { opacity: 0.5 }
+                        ]}
+                        onPress={() => performRegistration(selectedPaymentMethod)}
+                        disabled={!selectedPaymentMethod}
+                    >
+                        <Text style={styles.confirmBtnText}>Confirm Payment & Register</Text>
+                    </TouchableOpacity>
+                </View>
+            </View>
+        </Modal>
+    );
 
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
@@ -225,6 +345,24 @@ const NewCustomerScreen = ({ navigation }) => {
                                 </View>
                             </FadeIn>
 
+                            {/* Entry Fee Field */}
+                            <FadeIn delay={550}>
+                                <View style={styles.inputGroup}>
+                                    <Text style={[styles.label, { color: colors.textSecondary }]}>Entry Fee (Optional)</Text>
+                                    <View style={[styles.inputContainer, { backgroundColor: colors.surfaceLight, borderColor: colors.border }]}>
+                                        <Icon name="cash-multiple" size={20} color={colors.textMuted} style={styles.inputIcon} />
+                                        <TextInput
+                                            style={[styles.input, { color: colors.textPrimary }]}
+                                            value={entryFee}
+                                            onChangeText={setEntryFee}
+                                            placeholder="Enter entry fee amount"
+                                            placeholderTextColor={colors.textMuted}
+                                            keyboardType="numeric"
+                                        />
+                                    </View>
+                                </View>
+                            </FadeIn>
+
                             {/* Check-in Time */}
                             <FadeIn delay={600}>
                                 <View style={styles.inputGroup}>
@@ -254,6 +392,7 @@ const NewCustomerScreen = ({ navigation }) => {
                     </ScaleIn>
                 </ScrollView>
             </KeyboardAvoidingView>
+            {renderPaymentModal()}
         </View>
     );
 };
@@ -366,6 +505,92 @@ const styles = StyleSheet.create({
     },
     suggestionMobile: {
         fontSize: 12,
+    },
+    modalOverlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    modalContent: {
+        width: '100%',
+        maxWidth: 400,
+        borderRadius: 20,
+        padding: 24,
+        elevation: 10,
+    },
+    modalHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: 20,
+    },
+    modalTitle: {
+        fontSize: 20,
+        fontWeight: '700',
+    },
+    amountContainer: {
+        alignItems: 'center',
+        paddingVertical: 16,
+        backgroundColor: 'rgba(59, 130, 246, 0.05)',
+        borderRadius: 12,
+        marginBottom: 24,
+    },
+    amountLabel: {
+        fontSize: 14,
+        marginBottom: 4,
+    },
+    amountValue: {
+        fontSize: 32,
+        fontWeight: '900',
+    },
+    paymentLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        marginBottom: 12,
+    },
+    paymentMethods: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 24,
+    },
+    paymentMethodBtn: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 16,
+        borderRadius: 12,
+        borderWidth: 2,
+        gap: 8,
+    },
+    paymentMethodText: {
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    qrContainer: {
+        alignItems: 'center',
+        marginBottom: 24,
+    },
+    qrWrapper: {
+        padding: 16,
+        backgroundColor: '#FFFFFF',
+        borderRadius: 12,
+        marginBottom: 12,
+    },
+    qrHint: {
+        fontSize: 12,
+        textAlign: 'center',
+    },
+    confirmBtn: {
+        paddingVertical: 16,
+        borderRadius: 12,
+        alignItems: 'center',
+    },
+    confirmBtnText: {
+        color: '#FFFFFF',
+        fontSize: 16,
+        fontWeight: '700',
     },
 });
 

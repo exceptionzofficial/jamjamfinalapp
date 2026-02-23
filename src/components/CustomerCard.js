@@ -17,7 +17,14 @@ const CustomerCard = ({ customer, onPress, onCheckout, showCheckin = true, showC
                 <Icon name="account" size={28} color={colors.accent} />
             </View>
             <View style={styles.content}>
-                <Text style={[styles.name, { color: colors.textPrimary }]}>{customer.name}</Text>
+                <View style={styles.nameRow}>
+                    <Text style={[styles.name, { color: colors.textPrimary }]}>{customer.name}</Text>
+                    {customer.isVisitor && (
+                        <View style={[styles.visitorBadge, { backgroundColor: '#F59E0B' }]}>
+                            <Text style={styles.visitorTagText}>VISITOR</Text>
+                        </View>
+                    )}
+                </View>
                 <View style={styles.row}>
                     <Icon name="phone" size={14} color={colors.textMuted} />
                     <Text style={[styles.mobile, { color: colors.textSecondary }]}>{customer.mobile}</Text>
@@ -102,6 +109,22 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 14,
         fontWeight: '700',
+    },
+    nameRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        marginBottom: 4,
+    },
+    visitorBadge: {
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+    },
+    visitorTagText: {
+        color: '#FFFFFF',
+        fontSize: 9,
+        fontWeight: '900',
     },
 });
 

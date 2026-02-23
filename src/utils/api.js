@@ -9,7 +9,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // Production URL
 const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
-// const API_BASE_URL = 'https://b738-2405-201-e02c-b031-d568-29eb-8694-6179.ngrok-free.app/api';
+// const API_BASE_URL = 'https://975b-2401-4900-93f0-edf9-d596-f64c-b5ff-31c0.ngrok-free.app/api';
 
 // ============= UPI Payment Configuration =============
 // Change this to your UPI ID - used across all payment screens
@@ -162,10 +162,15 @@ export const deleteGame = async (gameId) => {
 // ============= BOOKINGS API (LIVE) =============
 
 export const saveBooking = async (booking) => {
-    return await apiCall('/bookings', {
+    const response = await apiCall('/bookings', {
         method: 'POST',
         body: JSON.stringify(booking),
     });
+    // Clear visitor tag if it exists (but not for Entry Fee service itself)
+    if (booking.customerId && booking.customerId !== 'walk-in' && booking.service !== 'Entry Fee') {
+        checkAndClearVisitorTag(booking.customerId);
+    }
+    return response;
 };
 
 export const getAllBookings = async () => {
@@ -307,10 +312,15 @@ export const deleteCombo = async (comboId) => {
 // ============= RESTAURANT ORDERS API (LIVE) =============
 
 export const saveRestaurantOrder = async (order) => {
-    return await apiCall('/restaurant-orders', {
+    const response = await apiCall('/restaurant-orders', {
         method: 'POST',
         body: JSON.stringify(order),
     });
+    // Clear visitor tag if it exists
+    if (order.customerId && order.customerId !== 'walk-in') {
+        checkAndClearVisitorTag(order.customerId);
+    }
+    return response;
 };
 
 export const getRestaurantOrders = async () => {
@@ -369,10 +379,14 @@ export const deleteBakeryItem = async (itemId) => {
 // ============= BAKERY ORDERS API (LIVE) =============
 
 export const saveBakeryOrder = async (order) => {
-    return await apiCall('/bakery-orders', {
+    const response = await apiCall('/bakery-orders', {
         method: 'POST',
         body: JSON.stringify(order),
     });
+    if (order.customerId && order.customerId !== 'walk-in') {
+        checkAndClearVisitorTag(order.customerId);
+    }
+    return response;
 };
 
 export const getCustomerBakeryOrders = async (customerId) => {
@@ -413,10 +427,14 @@ export const deleteJuiceItem = async (itemId) => {
 // ============= JUICE BAR ORDERS API (LIVE) =============
 
 export const saveJuiceOrder = async (order) => {
-    return await apiCall('/juice-orders', {
+    const response = await apiCall('/juice-orders', {
         method: 'POST',
         body: JSON.stringify(order),
     });
+    if (order.customerId && order.customerId !== 'walk-in') {
+        checkAndClearVisitorTag(order.customerId);
+    }
+    return response;
 };
 
 export const getCustomerJuiceOrders = async (customerId) => {
@@ -457,10 +475,14 @@ export const deleteMassageItem = async (itemId) => {
 // ============= MASSAGE ORDERS API (LIVE) =============
 
 export const saveMassageOrder = async (order) => {
-    return await apiCall('/massage-orders', {
+    const response = await apiCall('/massage-orders', {
         method: 'POST',
         body: JSON.stringify(order),
     });
+    if (order.customerId && order.customerId !== 'walk-in') {
+        checkAndClearVisitorTag(order.customerId);
+    }
+    return response;
 };
 
 export const getCustomerMassageOrders = async (customerId) => {
@@ -501,10 +523,14 @@ export const deletePoolType = async (typeId) => {
 // ============= POOL ORDERS API (LIVE) =============
 
 export const savePoolOrder = async (order) => {
-    return await apiCall('/pool-orders', {
+    const response = await apiCall('/pool-orders', {
         method: 'POST',
         body: JSON.stringify(order),
     });
+    if (order.customerId && order.customerId !== 'walk-in') {
+        checkAndClearVisitorTag(order.customerId);
+    }
+    return response;
 };
 
 export const getCustomerPoolOrders = async (customerId) => {
@@ -527,10 +553,14 @@ export const getTaxSettings = async () => {
 // ============= BAR ORDERS API (LIVE) =============
 
 export const saveBarOrder = async (order) => {
-    return await apiCall('/bar-orders', {
+    const response = await apiCall('/bar-orders', {
         method: 'POST',
         body: JSON.stringify(order),
     });
+    if (order.customerId && order.customerId !== 'walk-in') {
+        checkAndClearVisitorTag(order.customerId);
+    }
+    return response;
 };
 
 export const getCustomerBarOrders = async (customerId) => {
@@ -690,5 +720,19 @@ export const getCustomerFullHistory = async (customerId) => {
     } catch (error) {
         console.error('Error fetching full customer history:', error);
         throw error;
+    }
+};
+
+// ============= HELPER TO CLEAR VISITOR TAG =============
+
+export const checkAndClearVisitorTag = async (customerId) => {
+    try {
+        const customer = await getCustomerById(customerId);
+        if (customer && customer.isVisitor) {
+            await updateCustomer(customerId, { isVisitor: false });
+            console.log(`Visitor tag cleared for customer: ${customerId}`);
+        }
+    } catch (error) {
+        console.error('Error clearing visitor tag:', error);
     }
 };
