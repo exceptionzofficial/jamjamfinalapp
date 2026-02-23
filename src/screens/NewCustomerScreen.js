@@ -22,7 +22,36 @@ const NewCustomerScreen = ({ navigation }) => {
     const [mobile, setMobile] = useState('');
     const [vehicleNo, setVehicleNo] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [suggestions, setSuggestions] = useState([]);
+    const [showSuggestions, setShowSuggestions] = useState(false);
+    const [existingCustomer, setExistingCustomer] = useState(null);
     const checkinTime = new Date().toISOString();
+
+    const fetchSuggestions = async (text) => {
+        setMobile(text);
+        if (text.length >= 3) {
+            try {
+                const { searchCustomers } = require('../utils/api');
+                const results = await searchCustomers(text);
+                setSuggestions(results);
+                setShowSuggestions(results.length > 0);
+            } catch (error) {
+                console.error('Error fetching suggestions:', error);
+            }
+        } else {
+            setSuggestions([]);
+            setShowSuggestions(false);
+        }
+    };
+
+    const selectSuggestion = (item) => {
+        setName(item.name || '');
+        setMobile(item.mobile || '');
+        setVehicleNo(item.vehicleNo || '');
+        setExistingCustomer(item);
+        setSuggestions([]);
+        setShowSuggestions(false);
+    };
 
     const validateForm = () => {
         if (!name.trim()) {
@@ -45,21 +74,52 @@ const NewCustomerScreen = ({ navigation }) => {
 
         setIsLoading(true);
         try {
-            const customer = {
-                name: name.trim(),
-                mobile: mobile.trim(),
-                vehicleNo: vehicleNo.trim() || null,
-            };
+            const { saveCustomer, updateCustomer } = require('../utils/api');
 
-            const savedCustomer = await saveCustomer(customer);
+            if (existingCustomer) {
+                // Check if already checked-in
+                if (existingCustomer.status === 'checked-in') {
+                    Alert.alert('Notice', 'Customer is already checked-in.');
+                    setIsLoading(false);
+                    return;
+                }
 
-            Alert.alert(
-                'Success',
-                `Customer registered successfully!\n\nID: ${savedCustomer.customerId}`,
-                [{ text: 'OK', onPress: () => navigation.goBack() }]
-            );
-        } catch {
-            Alert.alert('Error', 'Failed to register customer. Please try again.');
+                // Update status to checked-in
+                const customerId = existingCustomer.customerId || existingCustomer.id;
+                await updateCustomer(customerId, {
+                    status: 'checked-in',
+                    checkinTime: new Date().toISOString(),
+                    name: name.trim(),
+                    vehicleNo: vehicleNo.trim() || null,
+                });
+
+                Alert.alert(
+                    'Success',
+                    `Welcome back, ${name.trim()}!\nCustomer checked-in successfully.`,
+                    [{ text: 'OK', onPress: () => navigation.goBack() }]
+                );
+            } else {
+                const customer = {
+                    name: name.trim(),
+                    mobile: mobile.trim(),
+                    vehicleNo: vehicleNo.trim() || null,
+                };
+
+                const savedCustomer = await saveCustomer(customer);
+
+                Alert.alert(
+                    'Success',
+                    `Customer registered successfully!\n\nID: ${savedCustomer.customerId}`,
+                    [{ text: 'OK', onPress: () => navigation.goBack() }]
+                );
+            }
+        } catch (error) {
+            console.error('Registration error:', error);
+            if (error.message?.includes('already exists')) {
+                Alert.alert('Existing Customer', 'A customer with this mobile already exists. Please search and select them from the suggestions.');
+            } else {
+                Alert.alert('Error', 'Failed to register customer. Please try again.');
+            }
         } finally {
             setIsLoading(false);
         }
@@ -120,13 +180,30 @@ const NewCustomerScreen = ({ navigation }) => {
                                         <TextInput
                                             style={[styles.input, { color: colors.textPrimary }]}
                                             value={mobile}
-                                            onChangeText={setMobile}
+                                            onChangeText={fetchSuggestions}
                                             placeholder="Enter mobile number"
                                             placeholderTextColor={colors.textMuted}
                                             keyboardType="phone-pad"
                                             maxLength={12}
                                         />
                                     </View>
+                                    {showSuggestions && (
+                                        <View style={[styles.suggestionsBox, { backgroundColor: colors.card, borderColor: colors.border }]}>
+                                            {suggestions.map((item, index) => (
+                                                <TouchableOpacity
+                                                    key={index}
+                                                    style={[styles.suggestionItem, { borderBottomColor: colors.border }]}
+                                                    onPress={() => selectSuggestion(item)}
+                                                >
+                                                    <Icon name="account-search" size={18} color={colors.brand} />
+                                                    <View style={styles.suggestionTextWrapper}>
+                                                        <Text style={[styles.suggestionName, { color: colors.textPrimary }]}>{item.name}</Text>
+                                                        <Text style={[styles.suggestionMobile, { color: colors.textSecondary }]}>{item.mobile}</Text>
+                                                    </View>
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    )}
                                 </View>
                             </FadeIn>
 
@@ -264,6 +341,31 @@ const styles = StyleSheet.create({
         fontWeight: '600',
         color: '#FFFFFF',
         marginLeft: 8,
+    },
+    suggestionsBox: {
+        marginTop: 4,
+        borderRadius: 10,
+        borderWidth: 1,
+        maxHeight: 200,
+        overflow: 'hidden',
+        zIndex: 100,
+        elevation: 5,
+    },
+    suggestionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        padding: 12,
+        borderBottomWidth: 1,
+    },
+    suggestionTextWrapper: {
+        marginLeft: 12,
+    },
+    suggestionName: {
+        fontSize: 14,
+        fontWeight: '600',
+    },
+    suggestionMobile: {
+        fontSize: 12,
     },
 });
 

@@ -26,6 +26,7 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
     const [isLoading, setIsLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [stats, setStats] = useState({ count: 0, total: 0 });
+    const [isCheckingIn, setIsCheckingIn] = useState(false);
 
     const loadHistory = useCallback(async (showLoading = true) => {
         if (!customer) return;
@@ -58,6 +59,28 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
             setRefreshing(false);
         }
     }, [customer]);
+
+    const handleCheckin = async () => {
+        const { updateCustomer } = require('../utils/api');
+        const { Alert } = require('react-native');
+        const customerId = customer.customerId || customer.id;
+
+        setIsCheckingIn(true);
+        try {
+            await updateCustomer(customerId, {
+                status: 'checked-in',
+                checkinTime: new Date().toISOString()
+            });
+            Alert.alert('Success', 'Customer checked-in successfully!', [
+                { text: 'OK', onPress: () => navigation.navigate('HomeTabs') }
+            ]);
+        } catch (error) {
+            console.error('Check-in error:', error);
+            Alert.alert('Error', 'Failed to check-in customer. Please try again.');
+        } finally {
+            setIsCheckingIn(false);
+        }
+    };
 
     useEffect(() => {
         loadHistory();
@@ -166,7 +189,19 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
                 <View style={styles.customerMeta}>
                     <Text style={[styles.profileName, { color: colors.textPrimary }]}>{customer?.name || 'Customer'}</Text>
                     <Text style={[styles.profileMobile, { color: colors.textSecondary }]}>{customer?.mobile || 'N/A'}</Text>
-                    <Text style={[styles.customerId, { color: colors.textMuted }]}>ID: {customer?.customerId || customer?.id || 'JJ-...'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+                        <Text style={[styles.customerId, { color: colors.textMuted }]}>ID: {customer?.customerId || customer?.id || 'JJ-...'}</Text>
+                        {customer?.status !== 'checked-in' && (
+                            <TouchableOpacity
+                                style={[styles.checkinBtn, { backgroundColor: colors.brand }]}
+                                onPress={handleCheckin}
+                                disabled={isCheckingIn}
+                            >
+                                <Icon name={isCheckingIn ? 'loading' : 'account-check'} size={14} color="#FFFFFF" />
+                                <Text style={styles.checkinBtnText}>{isCheckingIn ? '...' : 'Check-in'}</Text>
+                            </TouchableOpacity>
+                        )}
+                    </View>
                 </View>
             </View>
 
@@ -420,6 +455,19 @@ const styles = StyleSheet.create({
         fontSize: 16,
         marginTop: 16,
         textAlign: 'center',
+    },
+    checkinBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+        gap: 4,
+    },
+    checkinBtnText: {
+        color: '#FFFFFF',
+        fontSize: 12,
+        fontWeight: '700',
     },
 });
 
