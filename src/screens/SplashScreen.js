@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Animated, Dimensions, Image } from 'react-native';
-
-const { width, height } = Dimensions.get('window');
+import { View, Text, StyleSheet, Animated, Image, useWindowDimensions } from 'react-native';
 
 const SplashScreen = ({ onFinish }) => {
+    const { width, height } = useWindowDimensions();
     const [fadeAnim] = useState(new Animated.Value(0));
     const [scaleAnim] = useState(new Animated.Value(0.7));
     const [textFade] = useState(new Animated.Value(0));
@@ -85,7 +84,7 @@ const styles = StyleSheet.create({
         top: 0,
         left: 0,
         right: 0,
-        height: height * 0.4,
+        height: '40%',
         backgroundColor: '#16213E',
         borderBottomLeftRadius: 60,
         borderBottomRightRadius: 60,

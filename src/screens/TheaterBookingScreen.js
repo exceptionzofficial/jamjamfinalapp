@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     View,
     Text,
@@ -10,23 +10,23 @@ import {
     ScrollView,
     TextInput,
     Image,
+    Alert,
+    ActivityIndicator,
+    RefreshControl,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn } from '../utils/animations';
+import { getTheaterShows, saveTheaterBooking } from '../utils/api';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
-
-// Sample Theater/Show Data (Frontend Only)
-const SHOWS = [
-    { id: 'show_1', name: 'Magic Show', time: '11:00 AM', duration: '45 min', price: 150, seatsAvailable: 48, icon: 'magic-staff' },
-    { id: 'show_2', name: 'Dance Performance', time: '02:00 PM', duration: '60 min', price: 200, seatsAvailable: 32, icon: 'dance-ballroom' },
-    { id: 'show_3', name: 'Comedy Night', time: '05:00 PM', duration: '90 min', price: 250, seatsAvailable: 0, icon: 'emoticon-lol' },
-    { id: 'show_4', name: 'Musical Concert', time: '07:30 PM', duration: '120 min', price: 350, seatsAvailable: 25, icon: 'music' },
-    { id: 'show_5', name: 'Kids Puppet Show', time: '10:00 AM', duration: '30 min', price: 100, seatsAvailable: 60, icon: 'teddy-bear' },
-];
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during TheaterBookingScreen initialization');
+}
 
 // Seat Categories
 const SEAT_CATEGORIES = [
@@ -39,13 +39,39 @@ const TheaterBookingScreen = ({ navigation, route }) => {
     const { colors } = useTheme();
     const customer = route?.params?.customer;
 
+    const [shows, setShows] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [refreshing, setRefreshing] = useState(false);
     const [selectedShow, setSelectedShow] = useState(null);
     const [showBookingModal, setShowBookingModal] = useState(false);
     const [seatCategory, setSeatCategory] = useState(SEAT_CATEGORIES[0]);
     const [ticketCount, setTicketCount] = useState('2');
+    const [bookingLoading, setBookingLoading] = useState(false);
+
+    const fetchShows = useCallback(async () => {
+        try {
+            const data = await getTheaterShows();
+            setShows(data || []);
+        } catch (error) {
+            console.error('Error fetching shows:', error);
+            Alert.alert('Error', 'Failed to load shows. Please try again.');
+        } finally {
+            setLoading(false);
+            setRefreshing(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchShows();
+    }, [fetchShows]);
+
+    const onRefresh = () => {
+        setRefreshing(true);
+        fetchShows();
+    };
 
     const handleSelectShow = (show) => {
-        if (show.seatsAvailable === 0) return;
+        if (show.availableSeats === 0) return;
         setSelectedShow(show);
         setShowBookingModal(true);
     };
@@ -56,19 +82,72 @@ const TheaterBookingScreen = ({ navigation, route }) => {
         return Math.round(selectedShow.price * seatCategory.multiplier * count);
     };
 
+    const handleConfirmBooking = async () => {
+        if (!selectedShow || !customer) {
+            Alert.alert('Error', 'Missing show or customer information');
+            return;
+        }
+
+        const count = parseInt(ticketCount);
+        if (isNaN(count) || count <= 0) {
+            Alert.alert('Error', 'Please enter a valid ticket count');
+            return;
+        }
+
+        if (count > selectedShow.availableSeats) {
+            Alert.alert('Error', 'Not enough seats available');
+            return;
+        }
+
+        setBookingLoading(true);
+        try {
+            const bookingData = {
+                customerId: customer.customerId,
+                customerName: customer.name,
+                customerMobile: customer.mobile,
+                showId: selectedShow.showId,
+                showName: selectedShow.name,
+                showTime: selectedShow.time,
+                seatCategory: seatCategory.name,
+                ticketCount: count,
+                totalAmount: calculateTotal(),
+                service: 'Theater',
+                paymentMethod: 'Cash', // Default for now
+            };
+
+            await saveTheaterBooking(bookingData);
+
+            Alert.alert(
+                'Success',
+                'Theater tickets booked successfully!',
+                [{
+                    text: 'OK', onPress: () => {
+                        setShowBookingModal(false);
+                        fetchShows(); // Refresh availability
+                    }
+                }]
+            );
+        } catch (error) {
+            console.error('Booking error:', error);
+            Alert.alert('Error', error.message || 'Failed to complete booking');
+        } finally {
+            setBookingLoading(false);
+        }
+    };
+
     const renderShowCard = ({ item }) => (
         <SlideUp style={styles.cardWrapper}>
             <TouchableOpacity
                 style={[
                     styles.showCard,
-                    { backgroundColor: colors.card, borderColor: item.seatsAvailable > 0 ? colors.border : '#EF4444' },
-                    item.seatsAvailable === 0 && styles.soldOutCard,
+                    { backgroundColor: colors.card, borderColor: item.availableSeats > 0 ? colors.border : '#EF4444' },
+                    item.availableSeats === 0 && styles.soldOutCard,
                 ]}
                 onPress={() => handleSelectShow(item)}
                 activeOpacity={0.8}
             >
-                <View style={[styles.showIconContainer, { backgroundColor: item.seatsAvailable > 0 ? '#8B5CF6' : '#EF4444' }]}>
-                    <Icon name={item.icon} size={32} color="#FFFFFF" />
+                <View style={[styles.showIconContainer, { backgroundColor: item.availableSeats > 0 ? '#8B5CF6' : '#EF4444' }]}>
+                    <Icon name={item.icon || 'movie'} size={32} color="#FFFFFF" />
                 </View>
                 <View style={styles.showInfo}>
                     <Text style={[styles.showName, { color: colors.textPrimary }]}>{item.name}</Text>
@@ -83,9 +162,9 @@ const TheaterBookingScreen = ({ navigation, route }) => {
                         <Text style={[styles.priceLabel, { color: colors.textSecondary }]}> / person</Text>
                     </View>
                 </View>
-                {item.seatsAvailable > 0 ? (
+                {item.availableSeats > 0 ? (
                     <View style={styles.seatsInfo}>
-                        <Text style={[styles.seatsCount, { color: colors.brand }]}>{item.seatsAvailable}</Text>
+                        <Text style={[styles.seatsCount, { color: colors.brand }]}>{item.availableSeats}</Text>
                         <Text style={[styles.seatsLabel, { color: colors.textMuted }]}>seats</Text>
                     </View>
                 ) : (
@@ -102,14 +181,14 @@ const TheaterBookingScreen = ({ navigation, route }) => {
             visible={showBookingModal}
             transparent
             animationType="slide"
-            onRequestClose={() => setShowBookingModal(false)}
+            onRequestClose={() => !bookingLoading && setShowBookingModal(false)}
         >
             <View style={styles.modalOverlay}>
                 <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
                     <ScrollView showsVerticalScrollIndicator={false}>
                         <View style={styles.modalHeader}>
                             <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Book Tickets</Text>
-                            <TouchableOpacity onPress={() => setShowBookingModal(false)}>
+                            <TouchableOpacity onPress={() => !bookingLoading && setShowBookingModal(false)}>
                                 <Icon name="close" size={24} color={colors.textMuted} />
                             </TouchableOpacity>
                         </View>
@@ -117,7 +196,7 @@ const TheaterBookingScreen = ({ navigation, route }) => {
                         {selectedShow && (
                             <View style={[styles.selectedShowCard, { backgroundColor: colors.background }]}>
                                 <View style={[styles.showBadge, { backgroundColor: '#8B5CF6' }]}>
-                                    <Icon name={selectedShow.icon} size={24} color="#FFFFFF" />
+                                    <Icon name={selectedShow.icon || 'movie'} size={24} color="#FFFFFF" />
                                 </View>
                                 <View style={{ marginLeft: 12, flex: 1 }}>
                                     <Text style={[styles.selectedShowName, { color: colors.textPrimary }]}>{selectedShow.name}</Text>
@@ -131,6 +210,7 @@ const TheaterBookingScreen = ({ navigation, route }) => {
                             {SEAT_CATEGORIES.map((cat) => (
                                 <TouchableOpacity
                                     key={cat.id}
+                                    disabled={bookingLoading}
                                     style={[
                                         styles.categoryBtn,
                                         { borderColor: seatCategory.id === cat.id ? cat.color : colors.border },
@@ -147,13 +227,21 @@ const TheaterBookingScreen = ({ navigation, route }) => {
                         <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Number of Tickets</Text>
                         <View style={styles.ticketSelector}>
                             <TouchableOpacity
+                                disabled={bookingLoading}
                                 style={[styles.ticketBtn, { backgroundColor: colors.background }]}
                                 onPress={() => setTicketCount(String(Math.max(1, (parseInt(ticketCount) || 1) - 1)))}
                             >
                                 <Icon name="minus" size={20} color={colors.textPrimary} />
                             </TouchableOpacity>
-                            <Text style={[styles.ticketCount, { color: colors.textPrimary }]}>{ticketCount}</Text>
+                            <TextInput
+                                style={[styles.ticketCount, { color: colors.textPrimary }]}
+                                value={ticketCount}
+                                onChangeText={setTicketCount}
+                                keyboardType="number-pad"
+                                editable={!bookingLoading}
+                            />
                             <TouchableOpacity
+                                disabled={bookingLoading}
                                 style={[styles.ticketBtn, { backgroundColor: colors.background }]}
                                 onPress={() => setTicketCount(String((parseInt(ticketCount) || 1) + 1))}
                             >
@@ -169,14 +257,25 @@ const TheaterBookingScreen = ({ navigation, route }) => {
 
                     <View style={styles.modalActions}>
                         <TouchableOpacity
+                            disabled={bookingLoading}
                             style={[styles.cancelBtn, { borderColor: colors.border }]}
                             onPress={() => setShowBookingModal(false)}
                         >
                             <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.confirmBtn}>
-                            <Icon name="ticket-confirmation" size={18} color="#FFFFFF" />
-                            <Text style={styles.confirmBtnText}>Book Tickets</Text>
+                        <TouchableOpacity
+                            style={[styles.confirmBtn, bookingLoading && { opacity: 0.7 }]}
+                            onPress={handleConfirmBooking}
+                            disabled={bookingLoading}
+                        >
+                            {bookingLoading ? (
+                                <ActivityIndicator color="#FFFFFF" size="small" />
+                            ) : (
+                                <>
+                                    <Icon name="ticket-confirmation" size={18} color="#FFFFFF" />
+                                    <Text style={styles.confirmBtnText}>Book Tickets</Text>
+                                </>
+                            )}
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -193,16 +292,31 @@ const TheaterBookingScreen = ({ navigation, route }) => {
                 <Text style={[styles.backText, { color: colors.textPrimary }]}>Back</Text>
             </TouchableOpacity>
 
-            <FlatList
-                data={SHOWS}
-                keyExtractor={(item) => item.id}
-                renderItem={renderShowCard}
-                contentContainerStyle={styles.listContent}
-                showsVerticalScrollIndicator={false}
-                ListHeaderComponent={
-                    <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Today's Shows</Text>
-                }
-            />
+            {loading ? (
+                <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                    <ActivityIndicator size="large" color={colors.brand} />
+                </View>
+            ) : (
+                <FlatList
+                    data={shows}
+                    keyExtractor={(item) => item.showId}
+                    renderItem={renderShowCard}
+                    contentContainerStyle={styles.listContent}
+                    showsVerticalScrollIndicator={false}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.brand]} />
+                    }
+                    ListHeaderComponent={
+                        <Text style={[styles.sectionTitle, { color: colors.textSecondary }]}>Today's Shows</Text>
+                    }
+                    ListEmptyComponent={
+                        <View style={{ padding: 40, alignItems: 'center' }}>
+                            <Icon name="movie-off-outline" size={64} color={colors.textMuted} />
+                            <Text style={{ color: colors.textMuted, marginTop: 12, fontSize: 16 }}>No shows available today</Text>
+                        </View>
+                    }
+                />
+            )}
 
             {renderBookingModal()}
         </View>

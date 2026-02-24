@@ -12,6 +12,7 @@ import {
     Alert,
     RefreshControl,
     Image,
+    useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LottieView from 'lottie-react-native';
@@ -33,8 +34,13 @@ import {
 } from '../utils/api';
 import { SlideUp, FadeIn } from '../utils/animations';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during JuiceBarScreen initialization');
+}
 
 // Categories for filtering Juice Bar items
 const CATEGORIES = [

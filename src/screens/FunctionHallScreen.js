@@ -15,8 +15,13 @@ import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn } from '../utils/animations';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during FunctionHallScreen initialization');
+}
 
 // Sample Function Halls (Frontend Only)
 const FUNCTION_HALLS = [

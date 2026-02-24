@@ -5,13 +5,10 @@ import {
     StyleSheet,
     FlatList,
     TouchableOpacity,
-    Dimensions,
-    Modal,
-    TextInput,
-    ScrollView,
-    Alert,
     RefreshControl,
     Image,
+    useWindowDimensions,
+    Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LottieView from 'lottie-react-native';
@@ -36,8 +33,13 @@ import {
 import { SlideUp, FadeIn } from '../utils/animations';
 import { printKOT } from '../utils/PrinterService';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during RestaurantScreen initialization');
+}
 
 // Categories for filtering
 const CATEGORIES = [

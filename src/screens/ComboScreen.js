@@ -34,7 +34,16 @@ import {
     getUPIString,
 } from '../utils/api';
 
-const { width } = Dimensions.get('window');
+// Safe Dimensions access with fallback
+let isTablet = false;
+let screenWidth = 375;
+try {
+    const dimWidth = Dimensions.get('window').width;
+    isTablet = dimWidth >= 768;
+    screenWidth = dimWidth;
+} catch (error) {
+    console.warn('Dimensions not available during ComboScreen initialization');
+}
 
 // Service definitions with API fetch functions
 const SERVICE_CONFIG = {
@@ -1059,7 +1068,7 @@ const styles = StyleSheet.create({
     confirmPaymentBtn: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12, marginTop: 20, gap: 8 },
     confirmPaymentText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
     servicesGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
-    serviceOption: { width: (width - 60) / 3, padding: 12, borderRadius: 12, alignItems: 'center', borderWidth: 2, position: 'relative' },
+    serviceOption: { width: (screenWidth - 60) / 3, padding: 12, borderRadius: 12, alignItems: 'center', borderWidth: 2, position: 'relative' },
     serviceOptionName: { fontSize: 11, fontWeight: '600', marginTop: 6, textAlign: 'center' },
     serviceAdded: { fontSize: 10, fontWeight: '500', marginTop: 2 },
     removeServiceBtn: { marginTop: 4 },

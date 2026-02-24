@@ -1,8 +1,13 @@
 import { StyleSheet, Dimensions } from 'react-native';
 import colors from './colors';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during globalStyles initialization');
+}
 
 export const globalStyles = StyleSheet.create({
     // Containers

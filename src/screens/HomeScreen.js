@@ -5,12 +5,12 @@ import {
     StyleSheet,
     FlatList,
     TouchableOpacity,
-    Dimensions,
     RefreshControl,
     Alert,
     Modal,
     ActivityIndicator,
     ScrollView,
+    useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../components/Header';
@@ -30,11 +30,19 @@ import {
 } from '../utils/api';
 import { FadeIn, SlideUp, StaggerItem } from '../utils/animations';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during HomeScreen initialization');
+}
 
 const HomeScreen = ({ navigation }) => {
     const { colors } = useTheme();
+    const { width } = useWindowDimensions();
+    // Update local isTablet to reflect actual current width (handles orientation changes)
+    const isTabletLocal = width >= 768;
     const [searchQuery, setSearchQuery] = useState('');
     const [customers, setCustomers] = useState([]);
     const [recentCustomers, setRecentCustomers] = useState([]);
@@ -145,7 +153,16 @@ const HomeScreen = ({ navigation }) => {
         setIsCheckingOut(true);
 
         try {
-            const history = await getCustomerFullHistory(customer.customerId || customer.id);
+            let history = await getCustomerFullHistory(customer.customerId || customer.id);
+
+            // Filter history to only include orders from the current visit (after checkinTime)
+            if (customer.checkinTime) {
+                const checkinDate = new Date(customer.checkinTime).getTime();
+                history = history.filter(order => {
+                    const orderDate = new Date(order.timestamp || order.orderTime || order.createdAt).getTime();
+                    return orderDate >= checkinDate;
+                });
+            }
 
             // Check for pending pay-later orders
             const pendingPayLater = history.filter(order => order.paymentMethod === 'paylater');
@@ -441,7 +458,7 @@ const HomeScreen = ({ navigation }) => {
     );
 
     if (selectedCustomer) {
-        const numColumns = isTablet ? 4 : 2;
+        const numColumns = isTabletLocal ? 4 : 2;
         return (
             <View style={[styles.container, { backgroundColor: colors.background }]}>
                 <Header subtitle="Employee Portal" showTypewriter={true} />

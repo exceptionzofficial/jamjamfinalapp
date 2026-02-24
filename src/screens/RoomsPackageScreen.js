@@ -23,8 +23,16 @@ import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn } from '../utils/animations';
 import * as api from '../utils/api';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+let screenWidth = 375;
+try {
+    const dimWidth = Dimensions.get('window').width;
+    isTablet = dimWidth >= 768;
+    screenWidth = dimWidth;
+} catch (error) {
+    console.warn('Dimensions not available during RoomsPackageScreen initialization');
+}
 
 // Lottie animation
 const RoomLoadingAnimation = require('../assets/room.json');
@@ -1188,8 +1196,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     lottieAnimation: {
-        width: width * 0.8,
-        height: width * 0.8,
+        width: screenWidth * 0.8,
+        height: screenWidth * 0.8,
     },
     loadingText: {
         marginTop: 20,

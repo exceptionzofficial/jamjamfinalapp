@@ -8,8 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // const API_BASE_URL = 'http://10.0.2.2:3000/api';
 
 // Production URL
-const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
-// const API_BASE_URL = 'https://975b-2401-4900-93f0-edf9-d596-f64c-b5ff-31c0.ngrok-free.app/api';
+// const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
+const API_BASE_URL = 'https://6e17-2405-201-e02c-b031-44fe-cd05-9c03-1a7c.ngrok-free.app/api';
 
 // ============= UPI Payment Configuration =============
 // Change this to your UPI ID - used across all payment screens
@@ -52,6 +52,24 @@ const apiCall = async (endpoint, options = {}) => {
         console.error(`API Error [${endpoint}]:`, error.message);
         throw error;
     }
+};
+
+// ============= THEATER API =============
+
+export const getTheaterShows = async () => {
+    return await apiCall('/theater/shows');
+};
+
+export const saveTheaterBooking = async (booking) => {
+    return await apiCall('/theater/bookings', {
+        method: 'POST',
+        body: JSON.stringify(booking),
+    });
+};
+
+export const getCustomerTheaterBookings = async (customerId) => {
+    if (!customerId) return [];
+    return await apiCall(`/theater/bookings/customer/${customerId}`);
 };
 
 // ============= CUSTOMER API (LIVE) =============
@@ -681,7 +699,8 @@ export const getCustomerFullHistory = async (customerId) => {
             juice,
             massage,
             pool,
-            bar
+            bar,
+            theater
         ] = await Promise.all([
             getCustomerBookings(customerId).catch(() => []),
             getCustomerRestaurantOrders(customerId).catch(() => []),
@@ -690,6 +709,7 @@ export const getCustomerFullHistory = async (customerId) => {
             getCustomerMassageOrders(customerId).catch(() => []),
             getCustomerPoolOrders(customerId).catch(() => []),
             getCustomerBarOrders(customerId).catch(() => []),
+            getCustomerTheaterBookings(customerId).catch(() => []),
         ]);
 
         console.log('API: Fetched history - Games/Combos:', games.length, 'Restaurant:', restaurant.length);
@@ -709,6 +729,7 @@ export const getCustomerFullHistory = async (customerId) => {
             ...massage.map(o => ({ ...o, service: 'Massage', type: 'massage' })),
             ...pool.map(o => ({ ...o, service: 'Pool', type: 'pool' })),
             ...bar.map(o => ({ ...o, service: 'Bar', type: 'bar' })),
+            ...theater.map(o => ({ ...o, service: 'Theater', type: 'theater' })),
         ];
 
         // Sort by timestamp descending (newest first)

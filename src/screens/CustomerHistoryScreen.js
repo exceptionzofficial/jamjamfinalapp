@@ -3,23 +3,23 @@ import {
     View,
     Text,
     StyleSheet,
-    FlatList,
     TouchableOpacity,
-    Dimensions,
     ActivityIndicator,
     RefreshControl,
+    SectionList,
+    Alert,
+    useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
-import { getCustomerFullHistory, formatDateTime } from '../utils/api';
+import { getCustomerFullHistory, formatDateTime, updateCustomer } from '../utils/api';
 import { FadeIn, SlideUp } from '../utils/animations';
-
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
 
 const CustomerHistoryScreen = ({ route, navigation }) => {
     const { colors } = useTheme();
+    const { width } = useWindowDimensions();
+    const isTablet = width >= 768;
     const { customer } = route.params || {};
 
     const [history, setHistory] = useState([]);
@@ -60,9 +60,29 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
         }
     }, [customer]);
 
+    const groupHistoryByDate = (data) => {
+        const groups = {};
+        data.forEach(item => {
+            const dateStr = new Date(item.timestamp || item.orderTime || item.createdAt).toLocaleDateString('en-IN', {
+                day: '2-digit',
+                month: 'short',
+                year: 'numeric'
+            });
+            if (!groups[dateStr]) {
+                groups[dateStr] = [];
+            }
+            groups[dateStr].push(item);
+        });
+
+        return Object.keys(groups).map(date => ({
+            title: date,
+            data: groups[date]
+        }));
+    };
+
+    const sections = groupHistoryByDate(history);
+
     const handleCheckin = async () => {
-        const { updateCustomer } = require('../utils/api');
-        const { Alert } = require('react-native');
         const customerId = customer.customerId || customer.id;
 
         setIsCheckingIn(true);
@@ -245,14 +265,21 @@ const CustomerHistoryScreen = ({ route, navigation }) => {
                     <Text style={[styles.loadingText, { color: colors.textSecondary }]}>Fetching history...</Text>
                 </View>
             ) : (
-                <FlatList
-                    data={history}
+                <SectionList
+                    sections={sections}
                     keyExtractor={(item, index) => item.id || item.orderId || item.bookingId || `history-${index}`}
                     renderItem={renderOrderItem}
+                    renderSectionHeader={({ section: { title } }) => (
+                        <View style={[styles.sectionHeader, { backgroundColor: colors.background }]}>
+                            <View style={[styles.dateDivider, { backgroundColor: colors.brand }]} />
+                            <Text style={[styles.sectionHeaderText, { color: colors.textPrimary }]}>{title}</Text>
+                        </View>
+                    )}
                     ListHeaderComponent={renderHeader}
                     ListEmptyComponent={renderEmpty}
                     contentContainerStyle={styles.listContent}
                     showsVerticalScrollIndicator={false}
+                    stickySectionHeadersEnabled={false}
                     refreshControl={
                         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.brand]} />
                     }
@@ -468,6 +495,25 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 12,
         fontWeight: '700',
+    },
+    sectionHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 4,
+        marginTop: 8,
+        gap: 12,
+    },
+    sectionHeaderText: {
+        fontSize: 15,
+        fontWeight: '800',
+        textTransform: 'uppercase',
+        letterSpacing: 1,
+    },
+    dateDivider: {
+        height: 20,
+        width: 4,
+        borderRadius: 2,
     },
 });
 

@@ -22,8 +22,13 @@ import { SlideUp, FadeIn } from '../utils/animations';
 // Lottie animation
 const GamesLoadingAnimation = require('../assets/games icon.json');
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during GamesScreen initialization');
+}
 
 // Border colors for game cards
 const BORDER_COLORS = [

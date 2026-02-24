@@ -32,8 +32,13 @@ import {
 import { SlideUp, FadeIn } from '../utils/animations';
 import { printKOT } from '../utils/PrinterService';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during BarScreen initialization');
+}
 
 // Categories for Bar
 const CATEGORIES = [

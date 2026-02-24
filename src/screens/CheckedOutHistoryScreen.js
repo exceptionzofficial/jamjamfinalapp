@@ -16,8 +16,13 @@ import { useTheme } from '../context/ThemeContext';
 import { getCheckedOutCustomers, formatDateTime } from '../utils/api';
 import { FadeIn, SlideUp } from '../utils/animations';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during CheckedOutHistoryScreen initialization');
+}
 
 const CheckedOutHistoryScreen = ({ navigation }) => {
     const { colors } = useTheme();

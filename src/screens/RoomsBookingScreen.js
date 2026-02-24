@@ -17,8 +17,13 @@ import { SlideUp, FadeIn } from '../utils/animations';
 
 import * as api from '../utils/api';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during RoomsBookingScreen initialization');
+}
 
 const RoomsBookingScreen = ({ navigation, route }) => {
     const { colors } = useTheme();

@@ -12,6 +12,7 @@ import {
     KeyboardAvoidingView,
     Platform,
     Dimensions,
+    useWindowDimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { launchImageLibrary } from 'react-native-image-picker';
@@ -23,12 +24,22 @@ import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn, ScaleIn } from '../utils/animations';
 import * as api from '../utils/api';
 
-const { width } = Dimensions.get('window');
+// Safe Dimensions access with fallback
+let isTablet = false;
+let screenWidth = 375;
+try {
+    const dimWidth = Dimensions.get('window').width;
+    isTablet = dimWidth >= 768;
+    screenWidth = dimWidth;
+} catch (error) {
+    console.warn('Dimensions not available during RoomCheckoutScreen initialization');
+}
 
 // Lottie animation
 const RoomLoadingAnimation = require('../assets/room.json');
 
 const RoomCheckoutScreen = ({ navigation, route }) => {
+    const { width } = useWindowDimensions();
     const { colors } = useTheme();
     const { customer, room } = route.params;
 
@@ -445,8 +456,8 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     lottieAnimation: {
-        width: width * 0.8,
-        height: width * 0.8,
+        width: screenWidth * 0.8,
+        height: screenWidth * 0.8,
     },
     loadingText: {
         marginTop: 20,

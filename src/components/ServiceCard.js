@@ -2,8 +2,13 @@ import React from 'react';
 import { Text, StyleSheet, TouchableOpacity, View, Dimensions } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during ServiceCard initialization');
+}
 
 // Service definitions with icons and colors
 export const SERVICES = [

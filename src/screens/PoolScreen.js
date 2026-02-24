@@ -8,8 +8,9 @@ import {
     Modal,
     TextInput,
     Alert,
-    Dimensions,
     ScrollView,
+    useWindowDimensions,
+    Dimensions,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LottieView from 'lottie-react-native';
@@ -22,8 +23,13 @@ import { SlideUp, FadeIn } from '../utils/animations';
 // Lottie animation
 const PoolLoadingAnimation = require('../assets/pool.json');
 
-const { width } = Dimensions.get('window');
-const isTablet = width >= 768;
+// Safe Dimensions access with fallback
+let isTablet = false;
+try {
+    isTablet = Dimensions.get('window').width >= 768;
+} catch (error) {
+    console.warn('Dimensions not available during PoolScreen initialization');
+}
 
 // Pool colors
 const POOL_COLORS = {

@@ -9,8 +9,15 @@ import {
     TouchableOpacity,
 } from 'react-native';
 import { useTheme } from '../context/ThemeContext';
+import { useWindowDimensions } from 'react-native';
 
-const { width: screenWidth } = Dimensions.get('window');
+// Safe Dimensions access with fallback
+let screenWidth = 375; // Default iPhone width
+try {
+    screenWidth = Dimensions.get('window').width;
+} catch (error) {
+    console.warn('Dimensions not available during BannerCarousel initialization');
+}
 const BANNER_HEIGHT = 160;
 
 // Placeholder banner images (online images for now)
@@ -38,10 +45,11 @@ const DEFAULT_BANNERS = [
 ];
 
 const BannerCarousel = ({ banners = DEFAULT_BANNERS, onBannerPress }) => {
+    const { width: currentWidth } = useWindowDimensions();
     const { colors } = useTheme();
     const scrollRef = useRef(null);
     const [activeIndex, setActiveIndex] = useState(0);
-    const bannerWidth = screenWidth - 32;
+    const bannerWidth = currentWidth - 32;
 
     // Auto-scroll
     useEffect(() => {
