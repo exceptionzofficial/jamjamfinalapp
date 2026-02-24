@@ -92,6 +92,55 @@ export const getCustomerTheaterBookings = async (customerId) => {
     return await apiCall(`/theater/bookings/customer/${customerId}`);
 };
 
+// ============= FUNCTION HALL API =============
+
+export const getFunctionHalls = async () => {
+    try {
+        const halls = await apiCall('/function-halls');
+        return halls.map(hall => ({
+            ...hall,
+            id: hall.hallId,
+        }));
+    } catch (error) {
+        console.error('Error fetching function halls:', error);
+        return [];
+    }
+};
+
+export const addFunctionHall = async (hall) => {
+    const newHall = await apiCall('/function-halls', {
+        method: 'POST',
+        body: JSON.stringify(hall),
+    });
+    return { ...newHall, id: newHall.hallId };
+};
+
+export const updateFunctionHall = async (hallId, updates) => {
+    const updated = await apiCall(`/function-halls/${hallId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+    });
+    return { ...updated, id: updated.hallId };
+};
+
+export const deleteFunctionHall = async (hallId) => {
+    return await apiCall(`/function-halls/${hallId}`, {
+        method: 'DELETE',
+    });
+};
+
+export const saveFunctionHallBooking = async (booking) => {
+    return await apiCall('/function-hall/bookings', {
+        method: 'POST',
+        body: JSON.stringify(booking),
+    });
+};
+
+export const getCustomerFunctionHallBookings = async (customerId) => {
+    if (!customerId) return [];
+    return await apiCall(`/function-hall/bookings/customer/${customerId}`);
+};
+
 // ============= CUSTOMER API (LIVE) =============
 
 export const createCustomer = async (customer) => {
@@ -720,7 +769,8 @@ export const getCustomerFullHistory = async (customerId) => {
             massage,
             pool,
             bar,
-            theater
+            theater,
+            hall
         ] = await Promise.all([
             getCustomerBookings(customerId).catch(() => []),
             getCustomerRestaurantOrders(customerId).catch(() => []),
@@ -730,6 +780,7 @@ export const getCustomerFullHistory = async (customerId) => {
             getCustomerPoolOrders(customerId).catch(() => []),
             getCustomerBarOrders(customerId).catch(() => []),
             getCustomerTheaterBookings(customerId).catch(() => []),
+            getCustomerFunctionHallBookings(customerId).catch(() => []),
         ]);
 
         console.log('API: Fetched history - Games/Combos:', games.length, 'Restaurant:', restaurant.length);
@@ -750,6 +801,7 @@ export const getCustomerFullHistory = async (customerId) => {
             ...pool.map(o => ({ ...o, service: 'Pool', type: 'pool' })),
             ...bar.map(o => ({ ...o, service: 'Bar', type: 'bar' })),
             ...theater.map(o => ({ ...o, service: 'Theater', type: 'theater' })),
+            ...hall.map(o => ({ ...o, service: 'Function Hall', type: 'hall' })),
         ];
 
         // Sort by timestamp descending (newest first)
