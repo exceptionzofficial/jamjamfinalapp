@@ -28,9 +28,11 @@ import {
     deleteMenuItem,
     UPI_ID,
     getUPIString,
+    getNextBillNumber
 } from '../utils/api';
 import { SlideUp, FadeIn } from '../utils/animations';
-import { printKOT } from '../utils/PrinterService';
+import { printKOT, printBill } from '../utils/PrinterService';
+import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 
 // Safe Dimensions access with fallback
 let isTablet = false;
@@ -222,6 +224,20 @@ const BarScreen = ({ route, navigation }) => {
 
             await saveBarOrder(order);
 
+            // Print Customer Bill
+            const billNo = await getNextBillNumber('B');
+            const billOrder = {
+                ...order,
+                billNo,
+                items: cartItems.map(item => ({
+                    name: item.displayName,
+                    quantity: item.quantity,
+                    price: item.displayPrice,
+                    subtotal: item.subtotal
+                })),
+            };
+            await printBill(billOrder);
+
             // Generate KOT for kitchen items
             const kitchenItems = cartItems.filter(ci => {
                 const cat = (ci.category || '').toLowerCase();
@@ -243,6 +259,7 @@ const BarScreen = ({ route, navigation }) => {
             Alert.alert('Success', 'Order placed successfully!', [
                 { text: 'OK', onPress: () => navigation.goBack() }
             ]);
+
         } catch (error) {
             Alert.alert('Error', 'Failed to place order');
         }
@@ -543,53 +560,131 @@ const BarScreen = ({ route, navigation }) => {
 
             <Modal visible={showCheckoutModal} animationType="slide" transparent>
                 <View style={styles.modalBg}>
-                    <View style={[styles.modalContent, { backgroundColor: colors.card }]}>
-                        <Text style={[styles.modalTitle, { color: colors.textPrimary, marginBottom: 20 }]}>Order Details</Text>
-                        <TextInput
-                            placeholder="Table Number (Optional)"
-                            placeholderTextColor={colors.textMuted}
-                            style={[styles.input, { color: colors.textPrimary, borderColor: colors.border }]}
-                            value={tableNo}
-                            onChangeText={setTableNo}
-                        />
-                        <Text style={{ color: colors.textSecondary, marginBottom: 10, marginTop: 10 }}>Payment Method</Text>
-                        <View style={styles.paymentGrid}>
-                            {['Cash', 'UPI', 'Pay Later'].map(method => (
-                                <TouchableOpacity
-                                    key={method}
-                                    style={[styles.payBtn, { borderColor: paymentMethod === method ? colors.brand : colors.border }]}
-                                    onPress={() => setPaymentMethod(method)}
-                                >
-                                    <Text style={{ color: paymentMethod === method ? colors.brand : colors.textPrimary }}>{method}</Text>
-                                </TouchableOpacity>
-                            ))}
+                    <View style={[styles.modalContent, { backgroundColor: '#FFFFFF', maxHeight: '90%' }]}>
+                        <View style={styles.modalHeader}>
+                            <Text style={[styles.modalTitle, { color: '#000', marginBottom: 0 }]}>Final Bill</Text>
+                            <TouchableOpacity onPress={() => setShowCheckoutModal(false)}>
+                                <Icon name="close" size={24} color="#000" />
+                            </TouchableOpacity>
                         </View>
 
-                        {/* UPI Details Display */}
-                        {paymentMethod === 'UPI' && (
-                            <View style={styles.qrSection}>
-                                <View style={styles.qrContainer}>
-                                    <QRCode
-                                        value={getUPIString(taxInfo.total)}
-                                        size={isTablet ? 180 : 150}
-                                        backgroundColor="#FFF"
-                                        color="#000"
-                                    />
-                                </View>
-                                <Text style={[styles.qrText, { color: colors.textPrimary }]}>Scan to Pay ₹{taxInfo.total}</Text>
-                                <Text style={[styles.upiIdText, { color: colors.brand }]}>UPI ID: {UPI_ID}</Text>
-                            </View>
-                        )}
+                        <ScrollView showsVerticalScrollIndicator={false}>
+                            {/* Professional Bill Header Preview */}
+                            <View style={styles.billPreviewContainer}>
+                                <Text style={styles.billHeadName}>{RESORT_DETAILS.name}</Text>
+                                <Text style={styles.billHeadAddr}>{RESORT_DETAILS.address}</Text>
 
-                        <TouchableOpacity style={[styles.primaryBtn, { backgroundColor: colors.brand, marginTop: 20 }]} onPress={handleSaveOrder}>
-                            <Text style={styles.primaryBtnText}>Confirm Order</Text>
+                                <View style={styles.billDividerDashed} />
+
+                                <View style={styles.billInfoRow}>
+                                    <Text style={styles.billInfoLabel}>Customer: <Text style={styles.billInfoValue}>{customer?.name || 'Guest'}</Text></Text>
+                                    <Text style={styles.billInfoLabel}>Order Type: <Text style={styles.billInfoValue}>Bar Service</Text></Text>
+                                    <Text style={styles.billInfoLabel}>Table No: <Text style={styles.billInfoValue}>{tableNo || 'N/A'}</Text></Text>
+                                </View>
+                            </View>
+
+                            <View style={styles.billDividerDashed} />
+
+                            {/* Order Summary Table */}
+                            <View style={styles.billTable}>
+                                <View style={styles.billTableHeader}>
+                                    <Text style={[styles.billCol, { flex: 3 }]}>ITEM NAME</Text>
+                                    <Text style={[styles.billCol, { flex: 1, textAlign: 'center' }]}>QTY</Text>
+                                    <Text style={[styles.billCol, { flex: 1.5, textAlign: 'right' }]}>AMOUNT</Text>
+                                </View>
+
+                                <View style={styles.billDividerDashed} />
+
+                                {cartItems.map((item, index) => (
+                                    <View key={index} style={styles.billTableRow}>
+                                        <Text style={[styles.billColContent, { flex: 3 }]} numberOfLines={1}>{item.name}</Text>
+                                        <Text style={[styles.billColContent, { flex: 1, textAlign: 'center' }]}>{item.quantity}</Text>
+                                        <Text style={[styles.billColContent, { flex: 1.5, textAlign: 'right' }]}>{(item.price || 0) * item.quantity}.00</Text>
+                                    </View>
+                                ))}
+
+                                <View style={styles.billDividerDashed} />
+
+                                <View style={styles.billSummaryRow}>
+                                    <Text style={styles.billSummaryLabel}>Subtotal</Text>
+                                    <Text style={styles.billSummaryValue}>₹{taxInfo.subtotal}.00</Text>
+                                </View>
+                                {taxInfo.taxPercent > 0 && (
+                                    <View style={styles.billSummaryRow}>
+                                        <Text style={styles.billSummaryLabel}>Tax ({taxInfo.taxPercent}%)</Text>
+                                        <Text style={styles.billSummaryValue}>₹{taxInfo.taxAmount}.00</Text>
+                                    </View>
+                                )}
+
+                                <View style={styles.billDividerDashed} />
+
+                                <View style={styles.billFinalTotalRow}>
+                                    <Text style={styles.billFinalTotalLabel}>TOTAL AMOUNT</Text>
+                                    <Text style={styles.billFinalTotalValue}>₹{taxInfo.total}.00</Text>
+                                </View>
+
+                                <Text style={styles.billAmtInWords}>
+                                    {numberToWords(taxInfo.total)}
+                                </Text>
+                            </View>
+
+                            <View style={styles.billInputSection}>
+                                <Text style={{ color: colors.textSecondary, marginBottom: 10, marginTop: 10 }}>Update Table Number (Optional)</Text>
+                                <TextInput
+                                    placeholder="Table Number"
+                                    placeholderTextColor={colors.textMuted}
+                                    style={[styles.input, { color: '#000', borderColor: colors.border, backgroundColor: '#F9F9F9' }]}
+                                    value={tableNo}
+                                    onChangeText={setTableNo}
+                                    keyboardType="number-pad"
+                                />
+
+                                <Text style={{ color: colors.textSecondary, marginBottom: 10, marginTop: 15 }}>Payment Method</Text>
+                                <View style={styles.paymentGrid}>
+                                    {['Cash', 'UPI', 'Pay Later'].map(method => (
+                                        <TouchableOpacity
+                                            key={method}
+                                            style={[styles.payBtn, {
+                                                borderColor: paymentMethod === method ? colors.brand : colors.border,
+                                                backgroundColor: paymentMethod === method ? colors.brand + '10' : 'transparent'
+                                            }]}
+                                            onPress={() => setPaymentMethod(method)}
+                                        >
+                                            <Text style={{ color: paymentMethod === method ? colors.brand : colors.textPrimary, fontWeight: paymentMethod === method ? '700' : '400' }}>{method}</Text>
+                                        </TouchableOpacity>
+                                    ))}
+                                </View>
+
+                                {paymentMethod === 'UPI' && (
+                                    <View style={styles.qrSection}>
+                                        <View style={styles.qrContainer}>
+                                            <QRCode
+                                                value={getUPIString(taxInfo.total)}
+                                                size={150}
+                                                backgroundColor="#FFF"
+                                                color="#000"
+                                            />
+                                        </View>
+                                        <Text style={[styles.qrText, { color: colors.textPrimary }]}>Scan to Pay ₹{taxInfo.total}</Text>
+                                    </View>
+                                )}
+                            </View>
+                        </ScrollView>
+
+                        <TouchableOpacity
+                            style={[styles.primaryBtn, { backgroundColor: colors.brand, marginTop: 10 }]}
+                            onPress={handleSaveOrder}
+                            disabled={!paymentMethod}
+                        >
+                            <Text style={styles.primaryBtnText}>Confirm & Print Bill</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={{ marginTop: 15, alignItems: 'center' }} onPress={() => setShowCheckoutModal(false)}>
+                        <TouchableOpacity style={{ marginTop: 10, marginBottom: 10, alignItems: 'center' }} onPress={() => setShowCheckoutModal(false)}>
                             <Text style={{ color: colors.textSecondary }}>Cancel</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
             </Modal>
+
 
             <Modal visible={showMenuManageModal} animationType="slide" transparent>
                 <View style={styles.modalBg}>
@@ -722,6 +817,111 @@ const styles = StyleSheet.create({
     upiIdText: {
         fontSize: 13,
         fontWeight: '800',
+    },
+    // Billing Preview Styles
+    billPreviewContainer: {
+        alignItems: 'center',
+        padding: 10,
+    },
+    billHeadName: {
+        fontSize: 16,
+        fontWeight: '900',
+        color: '#000',
+        textAlign: 'center',
+    },
+    billHeadAddr: {
+        fontSize: 10,
+        color: '#333',
+        textAlign: 'center',
+        fontWeight: '600',
+    },
+    billDividerDashed: {
+        width: '100%',
+        borderBottomWidth: 1,
+        borderBottomColor: '#333',
+        borderStyle: 'dashed',
+        marginVertical: 10,
+    },
+    billInfoRow: {
+        width: '100%',
+        gap: 2,
+    },
+    billInfoLabel: {
+        fontSize: 11,
+        color: '#333',
+        fontWeight: '800',
+    },
+    billInfoValue: {
+        fontSize: 11,
+        color: '#000',
+        fontWeight: '700',
+    },
+    billTable: {
+        width: '100%',
+    },
+    billTableHeader: {
+        flexDirection: 'row',
+        width: '100%',
+    },
+    billCol: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: '#000',
+    },
+    billTableRow: {
+        flexDirection: 'row',
+        width: '100%',
+        minHeight: 20,
+        alignItems: 'center',
+    },
+    billColContent: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: '#000',
+    },
+    billSummaryRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 2,
+    },
+    billSummaryLabel: {
+        fontSize: 11,
+        color: '#333',
+        fontWeight: '700',
+    },
+    billSummaryValue: {
+        fontSize: 11,
+        color: '#000',
+        fontWeight: '700',
+    },
+    billFinalTotalRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 4,
+    },
+    billFinalTotalLabel: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#000',
+    },
+    billFinalTotalValue: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#000',
+    },
+    billAmtInWords: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#000',
+        textAlign: 'center',
+        marginTop: 4,
+        fontStyle: 'italic',
+    },
+    billInputSection: {
+        marginTop: 10,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#EEE',
     },
 });
 

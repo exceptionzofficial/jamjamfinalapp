@@ -32,7 +32,12 @@ import {
     searchCustomers,
     UPI_ID,
     getUPIString,
+    getTaxByService,
+    calculateTax,
+    getNextBillNumber,
 } from '../utils/api';
+import { printBill } from '../services/PrinterService';
+import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 
 // Safe Dimensions access with fallback
 let isTablet = false;
@@ -398,6 +403,29 @@ const ComboScreen = () => {
                 comboName: sellingCombo.name,
                 comboId: sellingCombo.id,
             });
+
+            // Print Customer Bill
+            const billNo = await getNextBillNumber('R');
+            const billOrder = {
+                customerId: actualCustomerId,
+                customerName: selectedCustomer.name,
+                customerMobile: selectedCustomer.mobile || '',
+                billNo,
+                items: bookingItems.map(item => ({
+                    name: item.itemName,
+                    quantity: 1, // Combo is usually 1 unit
+                    price: item.price,
+                    subtotal: item.price
+                })),
+                subtotal: sellingCombo.comboPrice, // It's a combo, so subtotal is combo price
+                taxPercent: 0,
+                taxAmount: 0,
+                totalAmount: sellingCombo.comboPrice,
+                paymentMethod: paymentMethod,
+                service: 'Combo',
+                timestamp: new Date().toISOString(),
+            };
+            await printBill(billOrder);
 
             Alert.alert(
                 'Success!',

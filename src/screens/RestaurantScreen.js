@@ -9,6 +9,10 @@ import {
     Image,
     useWindowDimensions,
     Dimensions,
+    Modal,
+    ScrollView,
+    TextInput,
+    Alert,
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import LottieView from 'lottie-react-native';
@@ -29,9 +33,18 @@ import {
     getUPIString,
     getTaxByService,
     calculateTax,
+    getNextBillNumber
 } from '../utils/api';
+import {
+    RESORT_DETAILS,
+    numberToWords,
+    formatBillDate,
+    formatBillTime,
+    generateBillNo,
+} from '../utils/billUtils';
 import { SlideUp, FadeIn } from '../utils/animations';
-import { printKOT } from '../utils/PrinterService';
+
+import { printKOT, printBill } from '../utils/PrinterService';
 
 // Safe Dimensions access with fallback
 let isTablet = false;
@@ -108,7 +121,7 @@ const RestaurantScreen = ({ route, navigation }) => {
     const [menuQuantity, setMenuQuantity] = useState('1'); // Quantity per serving (e.g., "2" for "2 Dosa")
 
     // Load data with minimum 5 second loading animation
-    const loadData = useCallback(async (showLoading = true) => {
+    const loadData = useCallback(async (showLoading = true, options = {}) => {
         const startTime = Date.now();
 
         if (showLoading && menuItems.length === 0) {
@@ -116,9 +129,9 @@ const RestaurantScreen = ({ route, navigation }) => {
         }
         try {
             const [items, comboList, tax] = await Promise.all([
-                getMenuItems(),
-                getCombos(),
-                getTaxByService('restaurant'),
+                getMenuItems(options),
+                getCombos(options),
+                getTaxByService('restaurant', options),
             ]);
 
             // Set tax rate
@@ -134,14 +147,16 @@ const RestaurantScreen = ({ route, navigation }) => {
 
             // Fetch pending orders
             if (customer) {
-                const orders = await getCustomerRestaurantOrders(customer.customerId || customer.id);
+                const orders = await getCustomerRestaurantOrders(customer.customerId || customer.id, options);
                 const payLaterOrders = orders.filter(o => o.paymentMethod === 'paylater');
                 setPendingOrders(payLaterOrders);
             }
         } catch (error) {
-            console.error('Error loading menu:', error);
-            if (menuItems.length === 0) {
-                Alert.alert('Error', 'Could not load menu. Check your connection.');
+            if (!error.isAborted) {
+                console.error('Error loading menu:', error);
+                if (menuItems.length === 0) {
+                    Alert.alert('Error', 'Could not load menu. Check your connection.');
+                }
             }
         } finally {
             // Ensure minimum 5 seconds loading animation
@@ -150,27 +165,41 @@ const RestaurantScreen = ({ route, navigation }) => {
             const remainingTime = Math.max(0, minLoadTime - elapsed);
 
             setTimeout(() => {
-                setIsLoading(false);
-                setRefreshing(false);
+                if (!options.signal?.aborted) {
+                    setIsLoading(false);
+                    setRefreshing(false);
 
-                // If openPending param is passed, show the modal after loading
-                if (route.params?.openPending) {
-                    setShowPendingModal(true);
+                    // If openPending param is passed, show the modal after loading
+                    if (route.params?.openPending) {
+                        setShowPendingModal(true);
+                    }
                 }
             }, remainingTime);
         }
-    }, [menuItems.length]);
+    }, [menuItems.length, customer, route.params]);
 
+    // Initial load and recursive polling
     useEffect(() => {
-        loadData(true);
-    }, []);
+        const controller = new AbortController();
+        let timeoutId;
 
-    // Auto-refresh every 5 seconds
-    useEffect(() => {
-        const intervalId = setInterval(() => {
-            loadData(false);
-        }, 5000);
-        return () => clearInterval(intervalId);
+        const poll = async () => {
+            // Initial load (show loading if empty)
+            const showSpin = menuItems.length === 0;
+            await loadData(showSpin, { signal: controller.signal });
+
+            // Schedule next poll ONLY after the previous one finishes
+            if (!controller.signal.aborted) {
+                timeoutId = setTimeout(poll, 5000);
+            }
+        };
+
+        poll();
+
+        return () => {
+            controller.abort();
+            clearTimeout(timeoutId);
+        };
     }, [loadData]);
 
     // Filter items by category
@@ -284,12 +313,23 @@ const RestaurantScreen = ({ route, navigation }) => {
 
             await saveRestaurantOrder(order);
 
+            // Print Customer Bill
+            const billNo = await getNextBillNumber('R');
+            const billOrder = {
+                ...order,
+                billNo,
+            };
+            try {
+                await printBill(billOrder);
+            } catch (printError) {
+                console.error('Bill Printing Failed:', printError);
+            }
+
             // Print KOT (Kitchen Order Ticket)
             try {
                 await printKOT(order);
             } catch (printError) {
                 console.error('KOT Printing Failed:', printError);
-                // We don't alert here to avoid interrupting the success flow
             }
 
             // Reload pending orders if it was a paylater order
@@ -811,108 +851,91 @@ const RestaurantScreen = ({ route, navigation }) => {
             onRequestClose={() => setShowCheckoutModal(false)}
         >
             <View style={[styles.modalOverlay, { backgroundColor: 'rgba(0,0,0,0.5)' }]}>
-                <View style={[styles.modalContainer, { backgroundColor: colors.background }]}>
+                <View style={[styles.modalContainer, { backgroundColor: '#FFFFFF' }]}>
                     <View style={styles.modalHeader}>
-                        <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>Checkout</Text>
+                        <Text style={[styles.modalTitle, { color: '#000000' }]}>Order Summary</Text>
                         <TouchableOpacity onPress={() => setShowCheckoutModal(false)}>
-                            <Icon name="close" size={24} color={colors.textPrimary} />
+                            <Icon name="close" size={24} color="#000000" />
                         </TouchableOpacity>
                     </View>
 
-                    <ScrollView style={styles.checkoutContent}>
-                        {/* Order Type Selection */}
-                        <Text style={[styles.checkoutLabel, { color: colors.textPrimary }]}>
-                            Where is this order for?
-                        </Text>
-                        <View style={styles.orderTypeOptions}>
-                            <TouchableOpacity
-                                style={[
-                                    styles.orderTypeOption,
-                                    {
-                                        backgroundColor: orderType === 'dining' ? colors.brand : colors.surface,
-                                        borderColor: colors.brand,
-                                    }
-                                ]}
-                                onPress={() => setOrderType('dining')}
-                            >
-                                <Icon
-                                    name="table-furniture"
-                                    size={24}
-                                    color={orderType === 'dining' ? '#FFFFFF' : colors.brand}
-                                />
-                                <Text style={[
-                                    styles.orderTypeText,
-                                    { color: orderType === 'dining' ? '#FFFFFF' : colors.brand }
-                                ]}>
-                                    Dining
-                                </Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[
-                                    styles.orderTypeOption,
-                                    {
-                                        backgroundColor: orderType === 'room' ? colors.brand : colors.surface,
-                                        borderColor: colors.brand,
-                                    }
-                                ]}
-                                onPress={() => setOrderType('room')}
-                            >
-                                <Icon
-                                    name="bed"
-                                    size={24}
-                                    color={orderType === 'room' ? '#FFFFFF' : colors.brand}
-                                />
-                                <Text style={[
-                                    styles.orderTypeText,
-                                    { color: orderType === 'room' ? '#FFFFFF' : colors.brand }
-                                ]}>
-                                    Room
-                                </Text>
-                            </TouchableOpacity>
+                    <ScrollView style={styles.checkoutContent} showsVerticalScrollIndicator={false}>
+                        {/* Professional Bill Header Preview */}
+                        <View style={styles.billPreviewContainer}>
+                            <Text style={styles.billHeadName}>{RESORT_DETAILS.name}</Text>
+                            <Text style={styles.billHeadAddr}>{RESORT_DETAILS.address}</Text>
+
+                            <View style={styles.billDividerDashed} />
+
+                            <View style={styles.billInfoRow}>
+                                <Text style={styles.billInfoLabel}>Customer: <Text style={styles.billInfoValue}>{customer?.name}</Text></Text>
+                                <Text style={styles.billInfoLabel}>Order Type: <Text style={styles.billInfoValue}>{orderType === 'dining' ? 'Dining' : 'Room Service'}</Text></Text>
+                                {orderType === 'dining' ? (
+                                    <Text style={styles.billInfoLabel}>Table No: <Text style={styles.billInfoValue}>{tableNo || 'N/A'}</Text></Text>
+                                ) : (
+                                    <Text style={styles.billInfoLabel}>Room No: <Text style={styles.billInfoValue}>{roomNo || 'N/A'}</Text></Text>
+                                )}
+                            </View>
                         </View>
 
-                        {/* Table/Room Number */}
-                        <Text style={[styles.checkoutLabel, { color: colors.textPrimary }]}>
-                            {orderType === 'dining' ? 'Table Number' : 'Room Number'}
-                        </Text>
-                        <TextInput
-                            style={[styles.checkoutInput, { backgroundColor: colors.surface, color: colors.textPrimary, borderColor: colors.border }]}
-                            placeholder={orderType === 'dining' ? 'Enter table number' : 'Enter room number'}
-                            placeholderTextColor={colors.textMuted}
-                            keyboardType="number-pad"
-                            value={orderType === 'dining' ? tableNo : roomNo}
-                            onChangeText={orderType === 'dining' ? setTableNo : setRoomNo}
-                        />
+                        <View style={styles.billDividerDashed} />
 
-                        {/* Order Summary */}
-                        <Text style={[styles.checkoutLabel, { color: colors.textPrimary, marginTop: 20 }]}>
-                            Order Summary
-                        </Text>
-                        <View style={[styles.orderSummary, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+                        {/* Order Summary Table */}
+                        <View style={styles.billTable}>
+                            <View style={styles.billTableHeader}>
+                                <Text style={[styles.billCol, { flex: 3 }]}>ITEM NAME</Text>
+                                <Text style={[styles.billCol, { flex: 1, textAlign: 'center' }]}>QTY</Text>
+                                <Text style={[styles.billCol, { flex: 1.5, textAlign: 'right' }]}>AMOUNT</Text>
+                            </View>
+
+                            <View style={styles.billDividerDashed} />
+
                             {cartItems.map(item => (
-                                <View key={item.id} style={styles.summaryItem}>
-                                    <Text style={[styles.summaryItemName, { color: colors.textPrimary }]}>
-                                        {item.name} × {item.quantity}
-                                    </Text>
-                                    <Text style={[styles.summaryItemPrice, { color: colors.textMuted }]}>
-                                        ₹{item.subtotal}
-                                    </Text>
+                                <View key={item.id} style={styles.billTableRow}>
+                                    <Text style={[styles.billColContent, { flex: 3 }]} numberOfLines={1}>{item.name}</Text>
+                                    <Text style={[styles.billColContent, { flex: 1, textAlign: 'center' }]}>{item.quantity}</Text>
+                                    <Text style={[styles.billColContent, { flex: 1.5, textAlign: 'right' }]}>{(item.price || item.comboPrice) * item.quantity}.00</Text>
                                 </View>
                             ))}
-                            <View style={[styles.summaryTotal, { borderTopColor: colors.border }]}>
-                                <Text style={[styles.summaryTotalLabel, { color: colors.textSecondary }]}>Subtotal</Text>
-                                <Text style={[styles.summaryTotalValue, { color: colors.textPrimary }]}>₹{taxInfo.subtotal}</Text>
+
+                            <View style={styles.billDividerDashed} />
+
+                            <View style={styles.billSummaryRow}>
+                                <Text style={styles.billSummaryLabel}>Subtotal</Text>
+                                <Text style={styles.billSummaryValue}>₹{taxInfo.subtotal}.00</Text>
                             </View>
                             {taxInfo.taxPercent > 0 && (
-                                <View style={styles.summaryItem}>
-                                    <Text style={[styles.summaryTotalLabel, { color: colors.textSecondary }]}>Tax ({taxInfo.taxPercent}%)</Text>
-                                    <Text style={[styles.summaryTotalValue, { color: colors.textSecondary }]}>₹{taxInfo.taxAmount}</Text>
+                                <View style={styles.billSummaryRow}>
+                                    <Text style={styles.billSummaryLabel}>Tax ({taxInfo.taxPercent}%)</Text>
+                                    <Text style={styles.billSummaryValue}>₹{taxInfo.taxAmount}.00</Text>
                                 </View>
                             )}
-                            <View style={[styles.summaryItem, { marginTop: 8 }]}>
-                                <Text style={[styles.summaryTotalLabel, { color: colors.textPrimary, fontWeight: '700' }]}>Total</Text>
-                                <Text style={[styles.summaryTotalValue, { color: colors.brand, fontWeight: '700' }]}>₹{taxInfo.total}</Text>
+
+                            <View style={styles.billDividerDashed} />
+
+                            <View style={styles.billFinalTotalRow}>
+                                <Text style={styles.billFinalTotalLabel}>TOTAL AMOUNT</Text>
+                                <Text style={styles.billFinalTotalValue}>₹{taxInfo.total}.00</Text>
                             </View>
+
+                            <Text style={styles.billAmtInWords}>
+                                {numberToWords(taxInfo.total)}
+                            </Text>
+                        </View>
+
+                        {/* Input Fields moved below summary for better flow */}
+                        <View style={styles.billInputSection}>
+                            <Text style={[styles.checkoutLabel, { color: '#333', marginTop: 15 }]}>
+                                {orderType === 'dining' ? 'Update Table Number' : 'Update Room Number'}
+                            </Text>
+                            <TextInput
+                                style={[styles.checkoutInput, { backgroundColor: '#F3F4F6', color: '#000', borderColor: '#DDD' }]}
+                                placeholder={orderType === 'dining' ? 'Enter table number' : 'Enter room number'}
+                                placeholderTextColor="#999"
+                                keyboardType="number-pad"
+                                value={orderType === 'dining' ? tableNo : roomNo}
+                                onChangeText={orderType === 'dining' ? setTableNo : setRoomNo}
+                            />
                         </View>
                     </ScrollView>
 
@@ -2289,6 +2312,111 @@ const styles = StyleSheet.create({
         color: '#FFFFFF',
         fontSize: 12,
         fontWeight: '600',
+    },
+    // Billing Preview Styles
+    billPreviewContainer: {
+        alignItems: 'center',
+        padding: 10,
+    },
+    billHeadName: {
+        fontSize: 16,
+        fontWeight: '900',
+        color: '#000',
+        textAlign: 'center',
+    },
+    billHeadAddr: {
+        fontSize: 10,
+        color: '#333',
+        textAlign: 'center',
+        fontWeight: '600',
+    },
+    billDividerDashed: {
+        width: '100%',
+        borderBottomWidth: 1,
+        borderBottomColor: '#333',
+        borderStyle: 'dashed',
+        marginVertical: 10,
+    },
+    billInfoRow: {
+        width: '100%',
+        gap: 2,
+    },
+    billInfoLabel: {
+        fontSize: 11,
+        color: '#333',
+        fontWeight: '800',
+    },
+    billInfoValue: {
+        fontSize: 11,
+        color: '#000',
+        fontWeight: '700',
+    },
+    billTable: {
+        width: '100%',
+    },
+    billTableHeader: {
+        flexDirection: 'row',
+        width: '100%',
+    },
+    billCol: {
+        fontSize: 10,
+        fontWeight: '900',
+        color: '#000',
+    },
+    billTableRow: {
+        flexDirection: 'row',
+        width: '100%',
+        minHeight: 20,
+        alignItems: 'center',
+    },
+    billColContent: {
+        fontSize: 10,
+        fontWeight: '700',
+        color: '#000',
+    },
+    billSummaryRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 2,
+    },
+    billSummaryLabel: {
+        fontSize: 11,
+        color: '#333',
+        fontWeight: '700',
+    },
+    billSummaryValue: {
+        fontSize: 11,
+        color: '#000',
+        fontWeight: '700',
+    },
+    billFinalTotalRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 4,
+    },
+    billFinalTotalLabel: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#000',
+    },
+    billFinalTotalValue: {
+        fontSize: 14,
+        fontWeight: '900',
+        color: '#000',
+    },
+    billAmtInWords: {
+        fontSize: 10,
+        fontWeight: '800',
+        color: '#000',
+        textAlign: 'center',
+        marginTop: 4,
+        fontStyle: 'italic',
+    },
+    billInputSection: {
+        marginTop: 10,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: '#EEE',
     },
 });
 

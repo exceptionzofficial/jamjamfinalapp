@@ -22,7 +22,9 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn, ScaleIn } from '../utils/animations';
-import * as api from '../utils/api';
+import api, { getNextBillNumber } from '../utils/api';
+import { printBill } from '../services/PrinterService';
+import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 
 // Safe Dimensions access with fallback
 let isTablet = false;
@@ -201,6 +203,14 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
             };
 
             await api.saveBooking(bookingData);
+
+            // Print Customer Bill
+            const billNo = await getNextBillNumber('R');
+            const billOrder = {
+                ...bookingData,
+                billNo,
+            };
+            await printBill(billOrder);
 
             // Ensure minimum 5 seconds loading animation
             const elapsed = Date.now() - startTime;

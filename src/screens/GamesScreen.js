@@ -16,7 +16,9 @@ import LottieView from 'lottie-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
-import { getGames, addGame, updateGame, deleteGame, saveBooking, getCustomerBookings, formatDateTime, UPI_ID, getUPIString, getTaxByService, calculateTax } from '../utils/api';
+import { getGames, addGame, updateGame, deleteGame, saveBooking, getCustomerBookings, formatDateTime, UPI_ID, getUPIString, getTaxByService, calculateTax, getNextBillNumber } from '../utils/api';
+import { printBill } from '../services/PrinterService';
+import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 import { SlideUp, FadeIn } from '../utils/animations';
 
 // Lottie animation
@@ -73,7 +75,7 @@ const GamesScreen = ({ route, navigation }) => {
     const [selectedGames, setSelectedGames] = useState({});
 
     // Load games from cloud (LIVE) with minimum 5 second loading animation
-    const loadGames = useCallback(async (showLoading = true) => {
+    const loadGames = useCallback(async (showLoading = true, options = {}) => {
         const startTime = Date.now();
 
         if (showLoading && games.length === 0) {
@@ -81,8 +83,8 @@ const GamesScreen = ({ route, navigation }) => {
         }
         try {
             const [freshGames, tax] = await Promise.all([
-                getGames(),
-                getTaxByService('games'),
+                getGames(options),
+                getTaxByService('games', options),
             ]);
 
             // Set tax rate
@@ -98,9 +100,11 @@ const GamesScreen = ({ route, navigation }) => {
                 return prev; // No change, keep same reference
             });
         } catch (error) {
-            console.error('Error loading games:', error);
-            if (games.length === 0) {
-                Alert.alert('Error', 'Could not load games. Check your connection.');
+            if (!error.isAborted) {
+                console.error('Error loading games:', error);
+                if (games.length === 0) {
+                    Alert.alert('Error', 'Could not load games. Check your connection.');
+                }
             }
         } finally {
             // Ensure minimum 5 seconds loading animation
@@ -109,23 +113,35 @@ const GamesScreen = ({ route, navigation }) => {
             const remainingTime = Math.max(0, minLoadTime - elapsed);
 
             setTimeout(() => {
-                setIsLoading(false);
+                if (!options.signal?.aborted) {
+                    setIsLoading(false);
+                }
             }, remainingTime);
         }
     }, [games.length]);
 
-    // Initial load
+    // Initial load and recursive polling
     useEffect(() => {
-        loadGames(true);
-    }, []);
+        const controller = new AbortController();
+        let timeoutId;
 
-    // Auto-refresh every 5 seconds
-    useEffect(() => {
-        const intervalId = setInterval(() => {
-            loadGames(false); // Don't show loading spinner for background refresh
-        }, 5000);
+        const poll = async () => {
+            // Initial load (show loading if empty)
+            const showSpin = games.length === 0;
+            await loadGames(showSpin, { signal: controller.signal });
 
-        return () => clearInterval(intervalId);
+            // Schedule next poll ONLY after the previous one finishes
+            if (!controller.signal.aborted) {
+                timeoutId = setTimeout(poll, 5000);
+            }
+        };
+
+        poll();
+
+        return () => {
+            controller.abort();
+            clearTimeout(timeoutId);
+        };
     }, [loadGames]);
 
     const resetForm = useCallback(() => {
@@ -337,6 +353,27 @@ const GamesScreen = ({ route, navigation }) => {
                 paymentMethod: paymentType,
                 service: 'Games',
             });
+
+            // Print Customer Bill
+            const billNo = await getNextBillNumber('R');
+            const billOrder = {
+                customerId: customer?.customerId || customer?.id,
+                customerName: customer?.name || 'Walk-in',
+                billNo,
+                items: bookingItems.map(item => ({
+                    name: item.gameName,
+                    quantity: item.coinCount,
+                    price: item.rate,
+                    subtotal: item.subtotal
+                })),
+                subtotal: taxInfo.subtotal,
+                taxPercent: taxInfo.taxPercent,
+                taxAmount: taxInfo.taxAmount,
+                totalAmount: taxInfo.total,
+                paymentMethod: paymentType,
+                timestamp: new Date().toISOString(),
+            };
+            await printBill(billOrder);
         } catch (error) {
             console.error('Error saving booking:', error);
         }

@@ -17,7 +17,9 @@ import LottieView from 'lottie-react-native';
 import QRCode from 'react-native-qrcode-svg';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
-import { getPoolTypes, addPoolType, updatePoolType, deletePoolType, savePoolOrder, UPI_ID, getUPIString, getTaxByService, calculateTax } from '../utils/api';
+import { getPoolTypes, addPoolType, updatePoolType, deletePoolType, savePoolOrder, UPI_ID, getUPIString, getTaxByService, calculateTax, getNextBillNumber } from '../utils/api';
+import { printBill } from '../services/PrinterService';
+import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 import { SlideUp, FadeIn } from '../utils/animations';
 
 // Lottie animation
@@ -67,7 +69,7 @@ const PoolScreen = ({ route, navigation }) => {
     const [taxPercent, setTaxPercent] = useState(0); // Tax rate from admin settings
 
     // Load pool types
-    const loadPoolTypes = useCallback(async (showLoading = true) => {
+    const loadPoolTypes = useCallback(async (showLoading = true, options = {}) => {
         const startTime = Date.now();
 
         if (showLoading && poolTypes.length === 0) {
@@ -75,35 +77,53 @@ const PoolScreen = ({ route, navigation }) => {
         }
         try {
             const [types, tax] = await Promise.all([
-                getPoolTypes(),
-                getTaxByService('pool'),
+                getPoolTypes(options),
+                getTaxByService('pool', options),
             ]);
 
             setPoolTypes(types);
             setTaxPercent(tax || 0);
         } catch (error) {
-            console.error('Error loading pool types:', error);
-            if (poolTypes.length === 0) {
-                Alert.alert('Error', 'Could not load pool types. Check your connection.');
+            if (!error.isAborted) {
+                console.error('Error loading pool types:', error);
+                if (poolTypes.length === 0) {
+                    Alert.alert('Error', 'Could not load pool types. Check your connection.');
+                }
             }
         } finally {
             const elapsed = Date.now() - startTime;
             const minLoadTime = showLoading && poolTypes.length === 0 ? 3000 : 0;
             const remainingTime = Math.max(0, minLoadTime - elapsed);
-            setTimeout(() => setIsLoading(false), remainingTime);
+            setTimeout(() => {
+                if (!options.signal?.aborted) {
+                    setIsLoading(false);
+                }
+            }, remainingTime);
         }
     }, [poolTypes.length]);
 
+    // Initial load and recursive polling
     useEffect(() => {
-        loadPoolTypes(true);
-    }, []);
+        const controller = new AbortController();
+        let timeoutId;
 
-    // Auto-refresh every 5 seconds
-    useEffect(() => {
-        const intervalId = setInterval(() => {
-            loadPoolTypes(false);
-        }, 5000);
-        return () => clearInterval(intervalId);
+        const poll = async () => {
+            // Initial load (show loading if empty)
+            const showSpin = poolTypes.length === 0;
+            await loadPoolTypes(showSpin, { signal: controller.signal });
+
+            // Schedule next poll ONLY after the previous one finishes
+            if (!controller.signal.aborted) {
+                timeoutId = setTimeout(poll, 5000);
+            }
+        };
+
+        poll();
+
+        return () => {
+            controller.abort();
+            clearTimeout(timeoutId);
+        };
     }, [loadPoolTypes]);
 
     // Calculate total from all pool type quantities
@@ -304,6 +324,29 @@ const PoolScreen = ({ route, navigation }) => {
                 paymentMethod: paymentType,
                 service: 'Pool',
             });
+
+            // Print Customer Bill
+            const billNo = await getNextBillNumber('R');
+            const billOrder = {
+                customerId: customer?.customerId || customer?.id,
+                customerName: customer?.name || 'Walk-in',
+                customerMobile: customer?.mobile || '',
+                billNo,
+                items: orderItems.map(item => ({
+                    name: item.typeName,
+                    quantity: item.quantity,
+                    price: item.pricePerPerson,
+                    subtotal: item.subtotal
+                })),
+                subtotal: taxInfo.subtotal,
+                taxPercent: taxInfo.taxPercent,
+                taxAmount: taxInfo.taxAmount,
+                totalAmount: taxInfo.total,
+                paymentMethod: paymentType,
+                service: 'Pool',
+                timestamp: new Date().toISOString(),
+            };
+            await printBill(billOrder);
 
             Alert.alert(
                 '✅ Booking Confirmed',

@@ -26,9 +26,18 @@ import {
     getCustomerRestaurantOrders,
     getCustomerFullHistory,
     checkoutCustomer,
-    formatDateTime
+    formatDateTime,
+    getNextBillNumber
 } from '../utils/api';
+import {
+    RESORT_DETAILS,
+    numberToWords,
+    formatBillDate,
+    formatBillTime,
+    generateBillNo
+} from '../utils/billUtils';
 import { FadeIn, SlideUp, StaggerItem } from '../utils/animations';
+
 
 // Safe Dimensions access with fallback
 let isTablet = false;
@@ -58,26 +67,43 @@ const HomeScreen = ({ navigation }) => {
     // Debounce timer ref
     const searchTimeoutRef = useRef(null);
 
-    const loadRecentCustomers = useCallback(async () => {
+    const loadRecentCustomers = useCallback(async (options = {}) => {
         try {
-            const recent = await getRecentCustomers();
+            const recent = await getRecentCustomers(options);
             setRecentCustomers(recent);
         } catch (error) {
-            console.error('Error loading customers:', error);
+            if (!error.isAborted) {
+                console.error('Error loading customers:', error);
+            }
         }
     }, []);
 
-    // Initial load
+    // Initial load and recursive polling
     useEffect(() => {
-        loadRecentCustomers();
-    }, []);
+        const controller = new AbortController();
+        let timeoutId;
 
-    // Auto-refresh every 5 seconds for live data
-    useEffect(() => {
-        // Stop polling if user is searching or has a customer selected
-        if (searchQuery.length > 0 || selectedCustomer) return;
-        const intervalId = setInterval(loadRecentCustomers, 5000);
-        return () => clearInterval(intervalId);
+        const poll = async () => {
+            // Stop polling if user is searching or has a customer selected
+            if (searchQuery.length > 0 || selectedCustomer) {
+                timeoutId = setTimeout(poll, 2000); // Check again soon
+                return;
+            }
+
+            await loadRecentCustomers({ signal: controller.signal });
+
+            // Schedule next poll ONLY after the previous one finishes
+            if (!controller.signal.aborted) {
+                timeoutId = setTimeout(poll, 5000);
+            }
+        };
+
+        poll();
+
+        return () => {
+            controller.abort();
+            clearTimeout(timeoutId);
+        };
     }, [loadRecentCustomers, searchQuery, selectedCustomer]);
 
     // Reload on screen focus
@@ -188,17 +214,42 @@ const HomeScreen = ({ navigation }) => {
                 return acc;
             }, {});
 
-            const grandTotal = history.reduce((sum, order) => sum + (order.totalAmount || 0), 0);
-            const totalTax = history.reduce((sum, order) => sum + (order.taxAmount || 0), 0);
+            // Split into General and Bar
+            const barData = totalsByService['Bar'];
+            const generalServices = { ...totalsByService };
+            delete generalServices['Bar'];
 
-            setInvoiceData({
-                services: totalsByService,
-                grandTotal,
-                totalTax,
+            const hasBar = !!barData;
+            const hasGeneral = Object.keys(generalServices).length > 0;
+
+            let invoiceInfo = {
+                checkoutDate: new Date().toISOString(),
                 allOrders: history,
-                checkoutDate: new Date().toISOString()
-            });
+            };
 
+            if (hasGeneral) {
+                const generalTotal = Object.values(generalServices).reduce((sum, s) => sum + s.amount, 0);
+                const generalTax = Object.values(generalServices).reduce((sum, s) => sum + s.tax, 0);
+                const billNo = await getNextBillNumber('R');
+                invoiceInfo.generalInvoice = {
+                    services: generalServices,
+                    grandTotal: generalTotal,
+                    totalTax: generalTax,
+                    billNo
+                };
+            }
+
+            if (hasBar) {
+                const billNo = await getNextBillNumber('B');
+                invoiceInfo.barInvoice = {
+                    services: { 'Bar': barData },
+                    grandTotal: barData.amount,
+                    totalTax: barData.tax,
+                    billNo
+                };
+            }
+
+            setInvoiceData(invoiceInfo);
             setShowCheckoutModal(true);
         } catch (error) {
             console.error('Error during checkout fetching:', error);
@@ -314,6 +365,86 @@ const HomeScreen = ({ navigation }) => {
             </Modal>
         );
 
+        const renderSingleBill = (invoice, title) => (
+            <View style={{ marginBottom: 30 }}>
+                {title && <Text style={[styles.billServiceTitle, { color: colors.brand, fontWeight: '900', textAlign: 'center', marginBottom: 10, fontSize: 18, textDecorationLine: 'underline' }]}>{title}</Text>}
+
+                <View style={styles.billMetaRow}>
+                    <View style={{ flex: 1 }}>
+                        <Text style={styles.billMetaLabel}>B.No: <Text style={styles.billMetaValue}>{invoice.billNo}</Text></Text>
+                    </View>
+                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                        <Text style={styles.billMetaLabel}>Date: <Text style={styles.billMetaValue}>{formatBillDate(invoiceData.checkoutDate)}</Text></Text>
+                        <Text style={styles.billMetaLabel}>Time: <Text style={styles.billMetaValue}>{formatBillTime(invoiceData.checkoutDate)}</Text></Text>
+                    </View>
+                </View>
+
+                <View style={styles.billInfoRow}>
+                    <Text style={styles.billInfoLabel}>To  : <Text style={styles.billInfoValue}>{checkoutCustomerData.name}</Text></Text>
+                    {checkoutCustomerData.roomNo && (
+                        <Text style={styles.billInfoValue}>Room No: {checkoutCustomerData.roomNo}</Text>
+                    )}
+                    <Text style={styles.billInfoValue}>State Name: {RESORT_DETAILS.state}</Text>
+                    <Text style={styles.billInfoValue}>State Code: {RESORT_DETAILS.stateCode}</Text>
+                </View>
+
+                <View style={styles.billDividerDashed} />
+
+                <View style={styles.billTable}>
+                    <View style={styles.billTableHeader}>
+                        <Text style={[styles.billCol, { flex: 3 }]}>ITEM NAME</Text>
+                        <Text style={[styles.billCol, { flex: 1, textAlign: 'center' }]}>QTY</Text>
+                        <Text style={[styles.billCol, { flex: 1, textAlign: 'right' }]}>RATE</Text>
+                        <Text style={[styles.billCol, { flex: 1.5, textAlign: 'right' }]}>AMOUNT</Text>
+                    </View>
+
+                    <View style={styles.billDividerDashed} />
+
+                    {Object.entries(invoice.services).map(([service, data], index) => (
+                        <View key={index} style={styles.billTableRow}>
+                            <Text style={[styles.billColContent, { flex: 3 }]}>{service} Service</Text>
+                            <Text style={[styles.billColContent, { flex: 1, textAlign: 'center' }]}>1</Text>
+                            <Text style={[styles.billColContent, { flex: 1, textAlign: 'right' }]}>{data.amount - data.tax}</Text>
+                            <Text style={[styles.billColContent, { flex: 1.5, textAlign: 'right' }]}>{(data.amount - data.tax).toFixed(2)}</Text>
+                        </View>
+                    ))}
+
+                    {invoice.totalTax > 0 && (
+                        <View style={styles.billTableRow}>
+                            <Text style={[styles.billColContent, { flex: 4 }]}>Service Tax / GST</Text>
+                            <Text style={[styles.billColContent, { flex: 1.5, textAlign: 'right' }]}>{invoice.totalTax.toFixed(2)}</Text>
+                        </View>
+                    )}
+
+                    <View style={styles.billDividerDashed} />
+
+                    <View style={styles.billTotalRow}>
+                        <Text style={styles.billTotalQty}>{Object.keys(invoice.services).length + (invoice.totalTax > 0 ? 1 : 0)} Items</Text>
+                        <Text style={styles.billTotalValue}>{invoice.grandTotal.toFixed(2)}</Text>
+                    </View>
+
+                    <View style={styles.billDividerDashed} />
+
+                    <View style={styles.billFinalTotalRow}>
+                        <Text style={styles.billFinalTotalLabel}>TOTAL AMT  :</Text>
+                        <Text style={styles.billFinalTotalValue}>{invoice.grandTotal.toFixed(2)}</Text>
+                    </View>
+
+                    <Text style={styles.billAmtInWords}>
+                        {numberToWords(invoice.grandTotal)}
+                    </Text>
+
+                    <View style={styles.billFooterSign}>
+                        <View style={styles.billDividerDashed} />
+                        <Text style={styles.billFooterText}>For {RESORT_DETAILS.name}</Text>
+                    </View>
+                </View>
+                {invoiceData.generalInvoice && invoiceData.barInvoice && invoice === invoiceData.generalInvoice && (
+                    <View style={{ marginVertical: 20, height: 2, backgroundColor: '#000', borderStyle: 'dashed', borderRadius: 1 }} />
+                )}
+            </View>
+        );
+
         return (
             <Modal
                 visible={showCheckoutModal}
@@ -325,63 +456,17 @@ const HomeScreen = ({ navigation }) => {
                     <View style={[styles.invoiceContainer, { backgroundColor: '#FFFFFF' }]}>
                         <ScrollView showsVerticalScrollIndicator={false}>
                             <View style={styles.receiptHeader}>
-                                <Text style={styles.receiptBrand}>SRI KALKI JAM JAM</Text>
-                                <Text style={styles.receiptSubtext}>Resorts & Theme Park</Text>
-                                <View style={styles.receiptDivider} />
-                                <Text style={styles.receiptTitle}>FINAL INVOICE</Text>
+                                <Text style={styles.billHeadName}>{RESORT_DETAILS.name}</Text>
+                                <Text style={styles.billHeadAddr}>{RESORT_DETAILS.address}</Text>
+                                <Text style={styles.billHeadOther}>GSTIN : {RESORT_DETAILS.gstin}</Text>
+                                <Text style={styles.billHeadOther}>Mobile : {RESORT_DETAILS.mobile}</Text>
+                                <Text style={styles.billHeadOther}>Email : {RESORT_DETAILS.email}</Text>
+                                <Text style={styles.billHeadOther}>Website : {RESORT_DETAILS.website}</Text>
+                                <View style={styles.billDividerDashed} />
                             </View>
 
-                            <View style={styles.receiptSection}>
-                                <View style={styles.receiptRow}>
-                                    <Text style={styles.receiptLabel}>Customer:</Text>
-                                    <Text style={styles.receiptValue}>{checkoutCustomerData.name}</Text>
-                                </View>
-                                <View style={styles.receiptRow}>
-                                    <Text style={styles.receiptLabel}>ID:</Text>
-                                    <Text style={styles.receiptValue}>{checkoutCustomerData.customerId || checkoutCustomerData.id}</Text>
-                                </View>
-                                <View style={styles.receiptRow}>
-                                    <Text style={styles.receiptLabel}>Check-in:</Text>
-                                    <Text style={styles.receiptValue}>{formatDateTime(checkoutCustomerData.checkinTime)}</Text>
-                                </View>
-                                <View style={styles.receiptRow}>
-                                    <Text style={styles.receiptLabel}>Check-out:</Text>
-                                    <Text style={styles.receiptValue}>{formatDateTime(invoiceData.checkoutDate)}</Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.receiptDivider} />
-
-                            <View style={styles.receiptSection}>
-                                <View style={[styles.receiptRow, styles.receiptHeaderRow]}>
-                                    <Text style={styles.receiptColMain}>SERVICE</Text>
-                                    <Text style={styles.receiptColAmount}>AMOUNT</Text>
-                                </View>
-                                {Object.entries(invoiceData.services).map(([service, data], index) => (
-                                    <View key={index} style={styles.receiptRow}>
-                                        <Text style={styles.receiptColMain}>{service}</Text>
-                                        <Text style={styles.receiptColAmount}>₹{data.amount}</Text>
-                                    </View>
-                                ))}
-                            </View>
-
-                            <View style={styles.receiptDivider} />
-
-                            <View style={styles.receiptSection}>
-                                <View style={styles.receiptRow}>
-                                    <Text style={styles.receiptLabel}>Total Tax:</Text>
-                                    <Text style={styles.receiptValue}>₹{invoiceData.totalTax}</Text>
-                                </View>
-                                <View style={[styles.receiptRow, styles.grandTotalRow]}>
-                                    <Text style={styles.grandTotalLabel}>GRAND TOTAL</Text>
-                                    <Text style={styles.grandTotalValue}>₹{invoiceData.grandTotal}</Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.receiptDivider} />
-
-                            <Text style={styles.receiptFooter}>Thank you for visiting!</Text>
-                            <Text style={styles.receiptFooterSmall}>Please show this receipt at the exit gate.</Text>
+                            {invoiceData.generalInvoice && renderSingleBill(invoiceData.generalInvoice, invoiceData.barInvoice ? "GENERAL BILL" : null)}
+                            {invoiceData.barInvoice && renderSingleBill(invoiceData.barInvoice, invoiceData.generalInvoice ? "BAR BILL" : null)}
                         </ScrollView>
 
                         <View style={styles.modalActions}>
@@ -604,103 +689,143 @@ const styles = StyleSheet.create({
     },
     receiptHeader: {
         alignItems: 'center',
-        marginBottom: 15,
-    },
-    receiptBrand: {
-        fontSize: 22,
-        fontWeight: '900',
-        color: '#000000',
-        letterSpacing: 1,
-    },
-    receiptSubtext: {
-        fontSize: 12,
-        color: '#333333',
         marginBottom: 10,
     },
-    receiptDivider: {
-        width: '100%',
-        borderBottomWidth: 1,
-        borderBottomColor: '#000000',
-        borderStyle: 'dashed',
-        marginVertical: 12,
-    },
-    receiptTitle: {
-        fontSize: 16,
-        fontWeight: '700',
-        color: '#000000',
-        textDecorationLine: 'underline',
-    },
-    receiptSection: {
-        marginBottom: 5,
-    },
-    receiptRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 6,
-    },
-    receiptLabel: {
-        fontSize: 13,
-        color: '#333333',
-        fontWeight: '500',
-    },
-    receiptValue: {
-        fontSize: 13,
-        color: '#000000',
-        fontWeight: '600',
-        textAlign: 'right',
-        flex: 1,
-        marginLeft: 10,
-    },
-    receiptHeaderRow: {
-        marginBottom: 10,
-    },
-    receiptColMain: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#000000',
-        flex: 1,
-    },
-    receiptColAmount: {
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#000000',
-        width: 80,
-        textAlign: 'right',
-    },
-    grandTotalRow: {
-        marginTop: 5,
-        paddingTop: 10,
-        borderTopWidth: 1,
-        borderTopColor: '#000000',
-    },
-    grandTotalLabel: {
+    billHeadName: {
         fontSize: 18,
         fontWeight: '900',
         color: '#000000',
-    },
-    grandTotalValue: {
-        fontSize: 18,
-        fontWeight: '900',
-        color: '#000000',
-    },
-    receiptFooter: {
         textAlign: 'center',
-        fontSize: 14,
-        fontWeight: '700',
-        color: '#000000',
-        marginTop: 10,
+        marginBottom: 2,
     },
-    receiptFooterSmall: {
-        textAlign: 'center',
+    billHeadAddr: {
         fontSize: 11,
         color: '#333333',
-        marginTop: 4,
+        textAlign: 'center',
+        paddingHorizontal: 10,
+        marginBottom: 4,
+        fontWeight: '600',
+    },
+    billHeadOther: {
+        fontSize: 11,
+        color: '#333333',
+        textAlign: 'center',
+        fontWeight: '600',
+    },
+    billDividerDashed: {
+        width: '100%',
+        borderBottomWidth: 1,
+        borderBottomColor: '#333333',
+        borderStyle: 'dashed',
+        marginVertical: 10,
+    },
+    billMetaRow: {
+        flexDirection: 'row',
+        width: '100%',
+        marginBottom: 10,
+    },
+    billMetaLabel: {
+        fontSize: 11,
+        color: '#333333',
+        fontWeight: '800',
+    },
+    billMetaValue: {
+        fontSize: 11,
+        color: '#000000',
+        fontWeight: '600',
+    },
+    billInfoRow: {
+        width: '100%',
+        alignItems: 'flex-start',
+        gap: 2,
+    },
+    billInfoLabel: {
+        fontSize: 12,
+        color: '#333333',
+        fontWeight: '800',
+    },
+    billInfoValue: {
+        fontSize: 12,
+        color: '#000000',
+        fontWeight: '800',
+    },
+    billTable: {
+        width: '100%',
+    },
+    billTableHeader: {
+        flexDirection: 'row',
+        width: '100%',
+    },
+    billCol: {
+        fontSize: 11,
+        fontWeight: '900',
+        color: '#000000',
+    },
+    billTableRow: {
+        flexDirection: 'row',
+        width: '100%',
+        minHeight: 24,
+        alignItems: 'center',
+    },
+    billColContent: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: '#000000',
+    },
+    billTotalRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingHorizontal: '20%',
+    },
+    billTotalQty: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#000000',
+    },
+    billTotalValue: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#000000',
+    },
+    billFinalTotalRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        paddingVertical: 5,
+    },
+    billFinalTotalLabel: {
+        fontSize: 16,
+        fontWeight: '900',
+        color: '#000000',
+    },
+    billFinalTotalValue: {
+        fontSize: 16,
+        fontWeight: '900',
+        color: '#000000',
+    },
+    billAmtInWords: {
+        fontSize: 12,
+        fontWeight: '800',
+        color: '#000000',
+        textAlign: 'center',
+        marginTop: 5,
+        fontStyle: 'italic',
+    },
+    billFooterSign: {
+        marginTop: 20,
+        alignItems: 'center',
+    },
+    billFooterText: {
+        fontSize: 12,
+        fontWeight: '900',
+        color: '#000000',
+        marginTop: 10,
     },
     modalActions: {
         flexDirection: 'row',
         gap: 12,
         marginTop: 20,
     },
+
     modalBtn: {
         flex: 1,
         height: 48,

@@ -8,8 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // const API_BASE_URL = 'http://10.0.2.2:3000/api';
 
 // Production URL
-// const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
-const API_BASE_URL = 'https://6e17-2405-201-e02c-b031-44fe-cd05-9c03-1a7c.ngrok-free.app/api';
+const API_BASE_URL = 'https://jamjambackendsettlo.vercel.app/api';
+// const API_BASE_URL = 'https://6e17-2405-201-e02c-b031-44fe-cd05-9c03-1a7c.ngrok-free.app/api';
 
 // ============= UPI Payment Configuration =============
 // Change this to your UPI ID - used across all payment screens
@@ -21,26 +21,33 @@ export const getUPIString = (amount) => {
     return `upi://pay?pa=${UPI_ID}&pn=${encodeURIComponent(UPI_NAME)}&am=${amount}&cu=INR`;
 };
 
-// Helper function for API calls with timeout
+// Helper function for API calls with timeout and cancellation support
 const apiCall = async (endpoint, options = {}) => {
+    const { signal: externalSignal, ...fetchOptions } = options;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+
     try {
         const url = `${API_BASE_URL}${endpoint}`;
         const config = {
-            ...options,
+            ...fetchOptions,
             headers: {
                 'Content-Type': 'application/json',
                 'ngrok-skip-browser-warning': 'true',
-                ...(options.headers || {}),
+                ...(fetchOptions.headers || {}),
             },
         };
 
-        // Add timeout of 10 seconds
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        // Link external signal if provided
+        if (externalSignal) {
+            if (externalSignal.aborted) {
+                controller.abort();
+            } else {
+                externalSignal.addEventListener('abort', () => controller.abort(), { once: true });
+            }
+        }
 
         const response = await fetch(url, { ...config, signal: controller.signal });
-        clearTimeout(timeoutId);
-
         const data = await response.json();
 
         if (!response.ok) {
@@ -49,15 +56,25 @@ const apiCall = async (endpoint, options = {}) => {
 
         return data;
     } catch (error) {
-        console.error(`API Error [${endpoint}]:`, error.message);
+        if (error.name === 'AbortError') {
+            // Signal to the caller that the request was aborted
+            const isTimeout = controller.signal.aborted && !externalSignal?.aborted;
+            console.log(`API [${endpoint}]: Request ${isTimeout ? 'timed out' : 'aborted'}`);
+            error.isAborted = true;
+            error.isTimeout = isTimeout;
+        } else {
+            console.error(`API Error [${endpoint}]:`, error.message);
+        }
         throw error;
+    } finally {
+        clearTimeout(timeoutId);
     }
 };
 
 // ============= THEATER API =============
 
-export const getTheaterShows = async () => {
-    return await apiCall('/theater/shows');
+export const getTheaterShows = async (options = {}) => {
+    return await apiCall('/theater/shows', options);
 };
 
 export const addTheaterShow = async (show) => {
@@ -94,15 +111,17 @@ export const getCustomerTheaterBookings = async (customerId) => {
 
 // ============= FUNCTION HALL API =============
 
-export const getFunctionHalls = async () => {
+export const getFunctionHalls = async (options = {}) => {
     try {
-        const halls = await apiCall('/function-halls');
+        const halls = await apiCall('/function-halls', options);
         return halls.map(hall => ({
             ...hall,
             id: hall.hallId,
         }));
     } catch (error) {
-        console.error('Error fetching function halls:', error);
+        if (!error.isAborted) {
+            console.error('Error fetching function halls:', error);
+        }
         return [];
     }
 };
@@ -151,30 +170,34 @@ export const createCustomer = async (customer) => {
 };
 
 // Get all customers from cloud (LIVE)
-export const getCustomers = async () => {
-    return await apiCall('/customers');
+export const getCustomers = async (options = {}) => {
+    return await apiCall('/customers', options);
 };
 
 // Get recent active customers (last 10 checked-in)
-export const getRecentCustomers = async () => {
+export const getRecentCustomers = async (options = {}) => {
     try {
         // Fetch only checked-in customers from cloud
-        const customers = await apiCall('/customers?status=checked-in');
+        const customers = await apiCall('/customers?status=checked-in', options);
         // Sort already handled by backend, but we'll slice to top 10
         return customers.slice(0, 10);
     } catch (error) {
-        console.error('Error fetching recent customers:', error);
+        if (!error.isAborted) {
+            console.error('Error fetching recent customers:', error);
+        }
         return [];
     }
 };
 
 // Get all checked-out customers for history
-export const getCheckedOutCustomers = async () => {
+export const getCheckedOutCustomers = async (options = {}) => {
     try {
         // Fetch only checked-out customers from cloud
-        return await apiCall('/customers?status=checked-out');
+        return await apiCall('/customers?status=checked-out', options);
     } catch (error) {
-        console.error('Error fetching checked-out customers:', error);
+        if (!error.isAborted) {
+            console.error('Error fetching checked-out customers:', error);
+        }
         return [];
     }
 };
@@ -210,16 +233,18 @@ export const deleteCustomer = async (customerId) => {
 // ============= GAMES API (LIVE - NO CACHE) =============
 
 // Get games directly from cloud (LIVE)
-export const getGames = async () => {
+export const getGames = async (options = {}) => {
     try {
-        const games = await apiCall('/games');
+        const games = await apiCall('/games', options);
         // Map gameId to id for compatibility
         return games.map(game => ({
             ...game,
             id: game.gameId,
         }));
     } catch (error) {
-        console.error('Error fetching games:', error);
+        if (!error.isAborted) {
+            console.error('Error fetching games:', error);
+        }
         return [];
     }
 };
@@ -301,6 +326,23 @@ export const generateCustomerId = () => {
     return `JJ-${timestamp}-${randomPart}`.toUpperCase();
 };
 
+// Sequential Bill Number Generation
+export const getNextBillNumber = async (prefix = 'R') => {
+    try {
+        const key = 'last_bill_number_sequence';
+        const lastNo = await AsyncStorage.getItem(key);
+        const nextNo = lastNo ? parseInt(lastNo, 10) + 1 : 1001;
+        await AsyncStorage.setItem(key, nextNo.toString());
+
+        // Format: Prefix-Number (e.g., R-1001, B-1002)
+        return `${prefix}-${nextNo}`;
+    } catch (error) {
+        console.error('Error getting next bill number:', error);
+        // Fallback to random if storage fails
+        return `${prefix}-${Math.floor(1000 + Math.random() * 9000)}`;
+    }
+};
+
 // ============= SAVE CUSTOMER (wrapper) =============
 
 export const saveCustomer = async (customer) => {
@@ -324,15 +366,17 @@ export const clearAllData = async () => {
 
 // ============= MENU ITEMS API (LIVE) =============
 
-export const getMenuItems = async () => {
+export const getMenuItems = async (options = {}) => {
     try {
-        const items = await apiCall('/menu');
+        const items = await apiCall('/menu', options);
         return items.map(item => ({
             ...item,
             id: item.itemId,
         }));
     } catch (error) {
-        console.error('Error fetching menu items:', error);
+        if (!error.isAborted) {
+            console.error('Error fetching menu items:', error);
+        }
         return [];
     }
 };
@@ -361,15 +405,17 @@ export const deleteMenuItem = async (itemId) => {
 
 // ============= COMBOS API (LIVE) =============
 
-export const getCombos = async () => {
+export const getCombos = async (options = {}) => {
     try {
-        const combos = await apiCall('/combos');
+        const combos = await apiCall('/combos', options);
         return combos.map(combo => ({
             ...combo,
             id: combo.comboId,
         }));
     } catch (error) {
-        console.error('Error fetching combos:', error);
+        if (!error.isAborted) {
+            console.error('Error fetching combos:', error);
+        }
         return [];
     }
 };
@@ -435,8 +481,8 @@ export const updateRestaurantOrderPayment = async (orderId, paymentMethod) => {
 
 // ============= BAKERY ITEMS API (LIVE) =============
 
-export const getBakeryItems = async () => {
-    const items = await apiCall('/bakery-items');
+export const getBakeryItems = async (options = {}) => {
+    const items = await apiCall('/bakery-items', options);
     return items.map(item => ({
         ...item,
         id: item.itemId || item.id,
@@ -483,8 +529,8 @@ export const getCustomerBakeryOrders = async (customerId) => {
 
 // ============= JUICE BAR ITEMS API (LIVE) =============
 
-export const getJuiceItems = async () => {
-    const items = await apiCall('/juice-items');
+export const getJuiceItems = async (options = {}) => {
+    const items = await apiCall('/juice-items', options);
     return items.map(item => ({
         ...item,
         id: item.itemId || item.id,
@@ -531,8 +577,8 @@ export const getCustomerJuiceOrders = async (customerId) => {
 
 // ============= MASSAGE ITEMS API (LIVE) =============
 
-export const getMassageItems = async () => {
-    const items = await apiCall('/massage-items');
+export const getMassageItems = async (options = {}) => {
+    const items = await apiCall('/massage-items', options);
     return items.map(item => ({
         ...item,
         id: item.itemId || item.id,
@@ -579,8 +625,8 @@ export const getCustomerMassageOrders = async (customerId) => {
 
 // ============= POOL TYPES API (LIVE) =============
 
-export const getPoolTypes = async () => {
-    const types = await apiCall('/pool-types');
+export const getPoolTypes = async (options = {}) => {
+    const types = await apiCall('/pool-types', options);
     return types.map(type => ({
         ...type,
         id: type.typeId || type.id,
@@ -628,11 +674,13 @@ export const getCustomerPoolOrders = async (customerId) => {
 // ============= TAX SETTINGS API (LIVE) =============
 
 // Get all tax settings (fetched fresh from backend)
-export const getTaxSettings = async () => {
+export const getTaxSettings = async (options = {}) => {
     try {
-        return await apiCall('/tax-settings');
+        return await apiCall('/tax-settings', options);
     } catch (error) {
-        console.error('Error fetching tax settings:', error);
+        if (!error.isAborted) {
+            console.error('Error fetching tax settings:', error);
+        }
         return [];
     }
 };
@@ -675,15 +723,17 @@ export const calculateTax = (subtotal, taxPercent) => {
 
 // ============= ROOMS API (LIVE) =============
 
-export const getRooms = async () => {
+export const getRooms = async (options = {}) => {
     try {
-        const rooms = await apiCall('/rooms');
+        const rooms = await apiCall('/rooms', options);
         return rooms.map(room => ({
             ...room,
             id: room.roomId || room.id,
         }));
     } catch (error) {
-        console.error('Error fetching rooms:', error);
+        if (!error.isAborted) {
+            console.error('Error fetching rooms:', error);
+        }
         return [];
     }
 };

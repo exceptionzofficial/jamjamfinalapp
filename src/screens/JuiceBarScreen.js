@@ -31,7 +31,10 @@ import {
     getUPIString,
     getTaxByService,
     calculateTax,
+    getNextBillNumber,
 } from '../utils/api';
+import { printBill } from '../services/PrinterService';
+import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 import { SlideUp, FadeIn } from '../utils/animations';
 
 // Safe Dimensions access with fallback
@@ -98,7 +101,7 @@ const JuiceBarScreen = ({ route, navigation }) => {
     const [menuQuantity, setMenuQuantity] = useState('1'); // Quantity per serving (e.g., "2" for "2 Dosa")
 
     // Load data with minimum 5 second loading animation
-    const loadData = useCallback(async (showLoading = true) => {
+    const loadData = useCallback(async (showLoading = true, options = {}) => {
         const startTime = Date.now();
 
         if (showLoading && menuItems.length === 0) {
@@ -106,8 +109,8 @@ const JuiceBarScreen = ({ route, navigation }) => {
         }
         try {
             const [items, tax] = await Promise.all([
-                getJuiceItems(),
-                getTaxByService('juice'),
+                getJuiceItems(options),
+                getTaxByService('juice', options),
             ]);
 
             // Set tax rate
@@ -115,9 +118,11 @@ const JuiceBarScreen = ({ route, navigation }) => {
 
             setMenuItems(items);
         } catch (error) {
-            console.error('Error loading Juice items:', error);
-            if (menuItems.length === 0) {
-                Alert.alert('Error', 'Could not load Juice items. Check your connection.');
+            if (!error.isAborted) {
+                console.error('Error loading Juice items:', error);
+                if (menuItems.length === 0) {
+                    Alert.alert('Error', 'Could not load Juice items. Check your connection.');
+                }
             }
         } finally {
             // Ensure minimum 5 seconds loading animation
@@ -126,22 +131,36 @@ const JuiceBarScreen = ({ route, navigation }) => {
             const remainingTime = Math.max(0, minLoadTime - elapsed);
 
             setTimeout(() => {
-                setIsLoading(false);
-                setRefreshing(false);
+                if (!options.signal?.aborted) {
+                    setIsLoading(false);
+                    setRefreshing(false);
+                }
             }, remainingTime);
         }
     }, [menuItems.length]);
 
+    // Initial load and recursive polling
     useEffect(() => {
-        loadData(true);
-    }, []);
+        const controller = new AbortController();
+        let timeoutId;
 
-    // Auto-refresh every 5 seconds
-    useEffect(() => {
-        const intervalId = setInterval(() => {
-            loadData(false);
-        }, 5000);
-        return () => clearInterval(intervalId);
+        const poll = async () => {
+            // Initial load (show loading if empty)
+            const showSpin = menuItems.length === 0;
+            await loadData(showSpin, { signal: controller.signal });
+
+            // Schedule next poll ONLY after the previous one finishes
+            if (!controller.signal.aborted) {
+                timeoutId = setTimeout(poll, 5000);
+            }
+        };
+
+        poll();
+
+        return () => {
+            controller.abort();
+            clearTimeout(timeoutId);
+        };
     }, [loadData]);
 
     // Filter items by category
@@ -232,6 +251,20 @@ const JuiceBarScreen = ({ route, navigation }) => {
             };
 
             await saveJuiceOrder(order);
+
+            // Print Customer Bill
+            const billNo = await getNextBillNumber('R');
+            const billOrder = {
+                ...order,
+                billNo,
+                items: cartItems.map(item => ({
+                    name: item.name,
+                    quantity: item.quantity,
+                    price: item.price,
+                    subtotal: item.subtotal
+                })),
+            };
+            await printBill(billOrder);
 
             Alert.alert(
                 '✅ Order Confirmed',

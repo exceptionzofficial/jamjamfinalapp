@@ -30,7 +30,10 @@ import {
     getUPIString,
     getTaxByService,
     calculateTax,
+    getNextBillNumber,
 } from '../utils/api';
+import { printBill } from '../services/PrinterService';
+import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 import { SlideUp, FadeIn } from '../utils/animations';
 
 // Safe Dimensions access with fallback
@@ -110,7 +113,7 @@ const MassageScreen = ({ route, navigation }) => {
     const [newCategoryColor, setNewCategoryColor] = useState('#10B981');
 
     // Load data with minimum 5 second loading animation
-    const loadData = useCallback(async (showLoading = true) => {
+    const loadData = useCallback(async (showLoading = true, options = {}) => {
         if (!massageType) return; // Don't load if no type selected
 
         const startTime = Date.now();
@@ -120,8 +123,8 @@ const MassageScreen = ({ route, navigation }) => {
         }
         try {
             const [items, tax] = await Promise.all([
-                getMassageItems(),
-                getTaxByService('massage'),
+                getMassageItems(options),
+                getTaxByService('massage', options),
             ]);
 
             // Set tax rate
@@ -134,9 +137,11 @@ const MassageScreen = ({ route, navigation }) => {
                 return prevIds !== newIds ? items : prev;
             });
         } catch (error) {
-            console.error('Error loading massage items:', error);
-            if (menuItems.length === 0) {
-                Alert.alert('Error', 'Could not load massage items. Check your connection.');
+            if (!error.isAborted) {
+                console.error('Error loading massage items:', error);
+                if (menuItems.length === 0) {
+                    Alert.alert('Error', 'Could not load massage items. Check your connection.');
+                }
             }
         } finally {
             // Ensure minimum 5 seconds loading animation
@@ -145,26 +150,38 @@ const MassageScreen = ({ route, navigation }) => {
             const remainingTime = Math.max(0, minLoadTime - elapsed);
 
             setTimeout(() => {
-                setIsLoading(false);
-                setRefreshing(false);
+                if (!options.signal?.aborted) {
+                    setIsLoading(false);
+                    setRefreshing(false);
+                }
             }, remainingTime);
         }
     }, [menuItems.length, massageType]);
 
-    // Load data when massage type changes
-    useEffect(() => {
-        if (massageType) {
-            loadData(true);
-        }
-    }, [massageType]);
-
-    // Auto-refresh every 5 seconds
+    // Initial load and recursive polling
     useEffect(() => {
         if (!massageType) return;
-        const intervalId = setInterval(() => {
-            loadData(false);
-        }, 5000);
-        return () => clearInterval(intervalId);
+
+        const controller = new AbortController();
+        let timeoutId;
+
+        const poll = async () => {
+            // Initial load (show loading if empty)
+            const showSpin = menuItems.length === 0;
+            await loadData(showSpin, { signal: controller.signal });
+
+            // Schedule next poll ONLY after the previous one finishes
+            if (!controller.signal.aborted) {
+                timeoutId = setTimeout(poll, 5000);
+            }
+        };
+
+        poll();
+
+        return () => {
+            controller.abort();
+            clearTimeout(timeoutId);
+        };
     }, [loadData, massageType]);
 
     // Build categories array with 'all' option
@@ -264,6 +281,20 @@ const MassageScreen = ({ route, navigation }) => {
             };
 
             await saveMassageOrder(order);
+
+            // Print Customer Bill
+            const billNo = await getNextBillNumber('R');
+            const billOrder = {
+                ...order,
+                billNo,
+                items: cartItems.map(item => ({
+                    name: item.name,
+                    quantity: item.quantity,
+                    price: item.price,
+                    subtotal: item.subtotal
+                })),
+            };
+            await printBill(billOrder);
 
             Alert.alert(
                 '✅ Booking Confirmed',

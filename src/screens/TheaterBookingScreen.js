@@ -18,7 +18,9 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn } from '../utils/animations';
-import { getTheaterShows, saveTheaterBooking, getUPIString, UPI_ID, addTheaterShow, updateTheaterShow, deleteTheaterShow } from '../utils/api';
+import { getTheaterShows, saveTheaterBooking, getUPIString, UPI_ID, addTheaterShow, updateTheaterShow, deleteTheaterShow, getNextBillNumber } from '../utils/api';
+import { printBill } from '../services/PrinterService';
+import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 import QRCode from 'react-native-qrcode-svg';
 
 // Safe Dimensions access with fallback
@@ -234,6 +236,24 @@ const TheaterBookingScreen = ({ navigation, route }) => {
             };
 
             await saveTheaterBooking(bookingData);
+
+            // Print Customer Bill
+            const billNo = await getNextBillNumber('R');
+            const billOrder = {
+                ...bookingData,
+                billNo,
+                items: [{
+                    name: `${bookingData.showName} (${bookingData.seatCategory})`,
+                    quantity: bookingData.ticketCount,
+                    price: bookingData.totalAmount / bookingData.ticketCount,
+                    subtotal: bookingData.totalAmount
+                }],
+                subtotal: bookingData.totalAmount, // Theater usually doesn't show tax breakdown in this screen yet
+                taxPercent: 0,
+                taxAmount: 0,
+                timestamp: new Date().toISOString(),
+            };
+            await printBill(billOrder);
 
             Alert.alert(
                 'Success',
