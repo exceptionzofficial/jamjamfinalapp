@@ -107,13 +107,7 @@ const BakeryScreen = ({ route, navigation }) => {
             // Set tax rate
             setTaxPercent(tax || 0);
 
-            // Smart update
-            setMenuItems(prev => {
-                const prevIds = prev.map(i => i.id || i.itemId).join(',');
-                const newIds = items.map(i => i.id || i.itemId).join(',');
-                if (prevIds === newIds && prev.length === items.length) return prev;
-                return items;
-            });
+            setMenuItems(items);
         } catch (error) {
             console.error('Error loading bakery items:', error);
             if (menuItems.length === 0) {

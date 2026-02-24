@@ -73,12 +73,7 @@ const PoolScreen = ({ route, navigation }) => {
                 getTaxByService('pool'),
             ]);
 
-            setPoolTypes(prev => {
-                const prevIds = prev.map(t => t.id).join(',');
-                const newIds = types.map(t => t.id).join(',');
-                if (prevIds === newIds && prev.length === types.length) return prev;
-                return types;
-            });
+            setPoolTypes(types);
             setTaxPercent(tax || 0);
         } catch (error) {
             console.error('Error loading pool types:', error);

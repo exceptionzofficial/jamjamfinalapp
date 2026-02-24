@@ -53,13 +53,7 @@ const HomeScreen = ({ navigation }) => {
     const loadRecentCustomers = useCallback(async () => {
         try {
             const recent = await getRecentCustomers();
-            setRecentCustomers(prev => {
-                const prevIds = prev.map(c => c.customerId || c.id).join(',');
-                const newIds = recent.map(c => c.customerId || c.id).join(',');
-                // Only update state if data actually changed to avoid unnecessary re-renders
-                if (prevIds === newIds && prev.length === recent.length) return prev;
-                return recent;
-            });
+            setRecentCustomers(recent);
         } catch (error) {
             console.error('Error loading customers:', error);
         }

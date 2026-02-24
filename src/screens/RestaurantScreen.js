@@ -127,30 +127,14 @@ const RestaurantScreen = ({ route, navigation }) => {
                 RESTAURANT_CATEGORY_IDS.includes(item.category?.toLowerCase())
             );
 
-            // Smart update
-            setMenuItems(prev => {
-                const prevIds = prev.map(i => i.id).join(',');
-                const newIds = restaurantOnlyItems.map(i => i.id).join(',');
-                return prevIds !== newIds ? restaurantOnlyItems : prev;
-            });
-
-            setCombos(prev => {
-                const prevIds = prev.map(c => c.id).join(',');
-                const newIds = comboList.map(c => c.id).join(',');
-                return prevIds !== newIds ? comboList : prev;
-            });
+            setMenuItems(restaurantOnlyItems);
+            setCombos(comboList);
 
             // Fetch pending orders
             if (customer) {
                 const orders = await getCustomerRestaurantOrders(customer.customerId || customer.id);
                 const payLaterOrders = orders.filter(o => o.paymentMethod === 'paylater');
-                // Smart update for pending orders
-                setPendingOrders(prev => {
-                    const prevIds = prev.map(o => o.orderId || o.id).join(',');
-                    const newIds = payLaterOrders.map(o => o.orderId || o.id).join(',');
-                    if (prevIds === newIds && prev.length === payLaterOrders.length) return prev;
-                    return payLaterOrders;
-                });
+                setPendingOrders(payLaterOrders);
             }
         } catch (error) {
             console.error('Error loading menu:', error);
