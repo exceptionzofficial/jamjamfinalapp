@@ -18,7 +18,8 @@ import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn } from '../utils/animations';
-import { getTheaterShows, saveTheaterBooking } from '../utils/api';
+import { getTheaterShows, saveTheaterBooking, getUPIString, UPI_ID, addTheaterShow, updateTheaterShow, deleteTheaterShow } from '../utils/api';
+import QRCode from 'react-native-qrcode-svg';
 
 // Safe Dimensions access with fallback
 let isTablet = false;
@@ -47,6 +48,22 @@ const TheaterBookingScreen = ({ navigation, route }) => {
     const [seatCategory, setSeatCategory] = useState(SEAT_CATEGORIES[0]);
     const [ticketCount, setTicketCount] = useState('2');
     const [bookingLoading, setBookingLoading] = useState(false);
+    const [paymentMethod, setPaymentMethod] = useState('Cash');
+
+    // Management State
+    const [isEditMode, setIsEditMode] = useState(false);
+    const [isDeleteMode, setIsDeleteMode] = useState(false);
+    const [showShowManageModal, setShowShowManageModal] = useState(false);
+    const [editingShow, setEditingShow] = useState(null);
+    const [manageLoading, setManageLoading] = useState(false);
+
+    // Show Form State
+    const [showName, setShowName] = useState('');
+    const [showPrice, setShowPrice] = useState('');
+    const [showTime, setShowTime] = useState('');
+    const [showDuration, setShowDuration] = useState('');
+    const [showTotalSeats, setShowTotalSeats] = useState('');
+    const [showIcon, setShowIcon] = useState('movie');
 
     const fetchShows = useCallback(async () => {
         try {
@@ -71,9 +88,110 @@ const TheaterBookingScreen = ({ navigation, route }) => {
     };
 
     const handleSelectShow = (show) => {
+        if (isEditMode) {
+            openEditShow(show);
+            return;
+        }
+        if (isDeleteMode) {
+            handleDeleteShow(show);
+            return;
+        }
+
         if (show.availableSeats === 0) return;
         setSelectedShow(show);
         setShowBookingModal(true);
+    };
+
+    // Management Functions
+    const toggleEditMode = () => {
+        setIsEditMode(!isEditMode);
+        setIsDeleteMode(false);
+    };
+
+    const toggleDeleteMode = () => {
+        setIsDeleteMode(!isDeleteMode);
+        setIsEditMode(false);
+    };
+
+    const openAddShow = () => {
+        setEditingShow(null);
+        setShowName('');
+        setShowPrice('');
+        setShowTime('');
+        setShowDuration('45 min');
+        setShowTotalSeats('50');
+        setShowIcon('movie');
+        setShowShowManageModal(true);
+    };
+
+    const openEditShow = (show) => {
+        setEditingShow(show);
+        setShowName(show.name);
+        setShowPrice(String(show.price));
+        setShowTime(show.time);
+        setShowDuration(show.duration);
+        setShowTotalSeats(String(show.totalSeats));
+        setShowIcon(show.icon || 'movie');
+        setShowShowManageModal(true);
+    };
+
+    const handleSaveShow = async () => {
+        if (!showName || !showPrice || !showTime) {
+            Alert.alert('Error', 'Please fill in all required fields');
+            return;
+        }
+
+        setManageLoading(true);
+        try {
+            const showData = {
+                name: showName,
+                price: parseFloat(showPrice),
+                time: showTime,
+                duration: showDuration,
+                totalSeats: parseInt(showTotalSeats),
+                availableSeats: editingShow ?
+                    (editingShow.availableSeats + (parseInt(showTotalSeats) - editingShow.totalSeats)) :
+                    parseInt(showTotalSeats),
+                icon: showIcon,
+            };
+
+            if (editingShow) {
+                await updateTheaterShow(editingShow.showId, showData);
+            } else {
+                await addTheaterShow(showData);
+            }
+
+            Alert.alert('Success', `Show ${editingShow ? 'updated' : 'added'} successfully!`);
+            setShowShowManageModal(false);
+            fetchShows();
+        } catch (error) {
+            console.error('Error saving show:', error);
+            Alert.alert('Error', 'Failed to save show package');
+        } finally {
+            setManageLoading(false);
+        }
+    };
+
+    const handleDeleteShow = (show) => {
+        Alert.alert(
+            'Delete Show',
+            `Are you sure you want to delete ${show.name}?`,
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            await deleteTheaterShow(show.showId);
+                            fetchShows();
+                        } catch (error) {
+                            Alert.alert('Error', 'Failed to delete show');
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const calculateTotal = () => {
@@ -112,7 +230,7 @@ const TheaterBookingScreen = ({ navigation, route }) => {
                 ticketCount: count,
                 totalAmount: calculateTotal(),
                 service: 'Theater',
-                paymentMethod: 'Cash', // Default for now
+                paymentMethod: paymentMethod,
             };
 
             await saveTheaterBooking(bookingData);
@@ -162,10 +280,20 @@ const TheaterBookingScreen = ({ navigation, route }) => {
                         <Text style={[styles.priceLabel, { color: colors.textSecondary }]}> / person</Text>
                     </View>
                 </View>
-                {item.availableSeats > 0 ? (
-                    <View style={styles.seatsInfo}>
-                        <Text style={[styles.seatsCount, { color: colors.brand }]}>{item.availableSeats}</Text>
-                        <Text style={[styles.seatsLabel, { color: colors.textMuted }]}>seats</Text>
+
+                {isEditMode || isDeleteMode ? (
+                    <View style={[styles.actionIndicator, { backgroundColor: isEditMode ? colors.brand : colors.error }]}>
+                        <Icon name={isEditMode ? 'pencil' : 'delete'} size={18} color="#FFFFFF" />
+                    </View>
+                ) : item.availableSeats > 0 ? (
+                    <View style={styles.showCardRight}>
+                        <View style={styles.seatsInfo}>
+                            <Text style={[styles.seatsCount, { color: colors.brand }]}>{item.availableSeats}</Text>
+                            <Text style={[styles.seatsLabel, { color: colors.textMuted }]}>seats</Text>
+                        </View>
+                        <View style={[styles.bookBtn, { backgroundColor: colors.brand }]}>
+                            <Text style={styles.bookBtnText}>ADD</Text>
+                        </View>
                     </View>
                 ) : (
                     <View style={styles.soldOutBadge}>
@@ -249,6 +377,41 @@ const TheaterBookingScreen = ({ navigation, route }) => {
                             </TouchableOpacity>
                         </View>
 
+                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Payment Method</Text>
+                        <View style={styles.paymentRow}>
+                            {['Cash', 'QR Code'].map((method) => (
+                                <TouchableOpacity
+                                    key={method}
+                                    style={[
+                                        styles.paymentBtn,
+                                        { borderColor: paymentMethod === method ? colors.brand : colors.border },
+                                        paymentMethod === method && { backgroundColor: colors.brand + '15' }
+                                    ]}
+                                    onPress={() => setPaymentMethod(method)}
+                                >
+                                    <Icon
+                                        name={method === 'Cash' ? 'cash' : 'qrcode-scan'}
+                                        size={20}
+                                        color={paymentMethod === method ? colors.brand : colors.textMuted}
+                                    />
+                                    <Text style={[styles.paymentText, { color: paymentMethod === method ? colors.brand : colors.textPrimary }]}>{method}</Text>
+                                </TouchableOpacity>
+                            ))}
+                        </View>
+
+                        {paymentMethod === 'QR Code' && (
+                            <View style={[styles.qrCodeCardInModal, { backgroundColor: '#FFFFFF', borderColor: colors.border }]}>
+                                <QRCode
+                                    value={getUPIString(calculateTotal())}
+                                    size={160}
+                                    backgroundColor="#FFFFFF"
+                                    color="#000000"
+                                />
+                                <Text style={styles.qrHintInModal}>Scan to Pay ₹{calculateTotal()}</Text>
+                                <Text style={styles.qrNoteInModal}>UPI: {UPI_ID}</Text>
+                            </View>
+                        )}
+
                         <View style={[styles.totalContainer, { borderTopColor: colors.border }]}>
                             <Text style={[styles.totalLabel, { color: colors.textSecondary }]}>Total Amount</Text>
                             <Text style={[styles.totalValue, { color: colors.brand }]}>₹{calculateTotal()}</Text>
@@ -283,6 +446,110 @@ const TheaterBookingScreen = ({ navigation, route }) => {
         </Modal>
     );
 
+    const renderShowManageModal = () => (
+        <Modal
+            visible={showShowManageModal}
+            transparent
+            animationType="slide"
+            onRequestClose={() => !manageLoading && setShowShowManageModal(false)}
+        >
+            <View style={styles.modalOverlay}>
+                <View style={[styles.modalContainer, { backgroundColor: colors.card }]}>
+                    <View style={styles.modalHeader}>
+                        <Text style={[styles.modalTitle, { color: colors.textPrimary }]}>
+                            {editingShow ? 'Edit Show Package' : 'Add New Show'}
+                        </Text>
+                        <TouchableOpacity onPress={() => !manageLoading && setShowShowManageModal(false)}>
+                            <Icon name="close" size={24} color={colors.textMuted} />
+                        </TouchableOpacity>
+                    </View>
+
+                    <ScrollView showsVerticalScrollIndicator={false}>
+                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Show Name *</Text>
+                        <TextInput
+                            style={[styles.manageInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                            placeholder="e.g. Magic Show"
+                            placeholderTextColor={colors.textMuted}
+                            value={showName}
+                            onChangeText={setShowName}
+                        />
+
+                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Price (₹) *</Text>
+                        <TextInput
+                            style={[styles.manageInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                            placeholder="e.g. 500"
+                            placeholderTextColor={colors.textMuted}
+                            value={showPrice}
+                            onChangeText={setShowPrice}
+                            keyboardType="number-pad"
+                        />
+
+                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Show Time *</Text>
+                        <TextInput
+                            style={[styles.manageInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                            placeholder="e.g. 11:00 AM"
+                            placeholderTextColor={colors.textMuted}
+                            value={showTime}
+                            onChangeText={setShowTime}
+                        />
+
+                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Duration</Text>
+                        <TextInput
+                            style={[styles.manageInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                            placeholder="e.g. 45 min"
+                            placeholderTextColor={colors.textMuted}
+                            value={showDuration}
+                            onChangeText={setShowDuration}
+                        />
+
+                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Total Seats</Text>
+                        <TextInput
+                            style={[styles.manageInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                            placeholder="e.g. 50"
+                            placeholderTextColor={colors.textMuted}
+                            value={showTotalSeats}
+                            onChangeText={setShowTotalSeats}
+                            keyboardType="number-pad"
+                        />
+
+                        <Text style={[styles.sectionLabel, { color: colors.textSecondary }]}>Icon Name</Text>
+                        <TextInput
+                            style={[styles.manageInput, { backgroundColor: colors.background, color: colors.textPrimary, borderColor: colors.border }]}
+                            placeholder="e.g. movie, magic-staff"
+                            placeholderTextColor={colors.textMuted}
+                            value={showIcon}
+                            onChangeText={setShowIcon}
+                        />
+                    </ScrollView>
+
+                    <View style={styles.modalActions}>
+                        <TouchableOpacity
+                            disabled={manageLoading}
+                            style={[styles.cancelBtn, { borderColor: colors.border }]}
+                            onPress={() => setShowShowManageModal(false)}
+                        >
+                            <Text style={[styles.cancelBtnText, { color: colors.textSecondary }]}>Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[styles.confirmBtn, manageLoading && { opacity: 0.7 }]}
+                            onPress={handleSaveShow}
+                            disabled={manageLoading}
+                        >
+                            {manageLoading ? (
+                                <ActivityIndicator color="#FFFFFF" size="small" />
+                            ) : (
+                                <>
+                                    <Icon name="check" size={18} color="#FFFFFF" />
+                                    <Text style={styles.confirmBtnText}>Save Show</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </View>
+        </Modal>
+    );
+
     return (
         <View style={[styles.container, { backgroundColor: colors.background }]}>
             <Header title="Theater & Shows" subtitle={customer?.name || 'Guest'} />
@@ -291,6 +558,29 @@ const TheaterBookingScreen = ({ navigation, route }) => {
                 <Icon name="arrow-left" size={24} color={colors.textPrimary} />
                 <Text style={[styles.backText, { color: colors.textPrimary }]}>Back</Text>
             </TouchableOpacity>
+
+            <View style={styles.headerActions}>
+                <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: isEditMode ? colors.brand : colors.card, borderColor: colors.brand, borderWidth: 1 }]}
+                    onPress={toggleEditMode}
+                >
+                    <Icon name="pencil" size={20} color={isEditMode ? '#FFFFFF' : colors.brand} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: isDeleteMode ? '#EF4444' : colors.card, borderColor: '#EF4444', borderWidth: 1 }]}
+                    onPress={toggleDeleteMode}
+                >
+                    <Icon name="delete" size={20} color={isDeleteMode ? '#FFFFFF' : '#EF4444'} />
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                    style={[styles.actionBtn, { backgroundColor: '#8B5CF6' }]}
+                    onPress={openAddShow}
+                >
+                    <Icon name="plus" size={24} color="#FFFFFF" />
+                </TouchableOpacity>
+            </View>
 
             {loading ? (
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -319,6 +609,7 @@ const TheaterBookingScreen = ({ navigation, route }) => {
             )}
 
             {renderBookingModal()}
+            {renderShowManageModal()}
         </View>
     );
 };
@@ -354,9 +645,22 @@ const styles = StyleSheet.create({
     priceRow: { flexDirection: 'row', alignItems: 'baseline', marginTop: 6 },
     priceValue: { fontSize: 16, fontWeight: '800' },
     priceLabel: { fontSize: 12 },
+    showCardRight: { alignItems: 'center', gap: 8 },
     seatsInfo: { alignItems: 'center' },
-    seatsCount: { fontSize: 20, fontWeight: '800' },
-    seatsLabel: { fontSize: 10, textTransform: 'uppercase' },
+    seatsCount: { fontSize: 18, fontWeight: '800' },
+    seatsLabel: { fontSize: 9, textTransform: 'uppercase' },
+    bookBtn: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 8,
+        minWidth: 54,
+        alignItems: 'center',
+    },
+    bookBtnText: {
+        color: '#FFFFFF',
+        fontSize: 12,
+        fontWeight: '800',
+    },
     soldOutBadge: { backgroundColor: '#EF4444', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
     soldOutText: { color: '#FFFFFF', fontSize: 11, fontWeight: '700' },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'flex-end' },
@@ -383,6 +687,61 @@ const styles = StyleSheet.create({
     cancelBtnText: { fontSize: 15, fontWeight: '600' },
     confirmBtn: { flex: 1.5, flexDirection: 'row', backgroundColor: '#8B5CF6', paddingVertical: 14, borderRadius: 12, alignItems: 'center', justifyContent: 'center', gap: 8 },
     confirmBtnText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+    paymentRow: { flexDirection: 'row', gap: 12, marginTop: 4 },
+    paymentBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 12, borderRadius: 12, borderWidth: 1 },
+    paymentText: { fontSize: 14, fontWeight: '600' },
+    qrCodeCardInModal: {
+        alignItems: 'center',
+        padding: 16,
+        borderRadius: 16,
+        marginTop: 16,
+        borderWidth: 1,
+    },
+    qrHintInModal: {
+        fontSize: 14,
+        color: '#666666',
+        marginTop: 8,
+    },
+    qrNoteInModal: {
+        fontSize: 12,
+        color: '#999999',
+        marginTop: 4,
+        fontStyle: 'italic',
+    },
+    headerActions: {
+        flexDirection: 'row',
+        paddingHorizontal: 16,
+        paddingBottom: 16,
+        gap: 12,
+        alignItems: 'center',
+    },
+    actionBtn: {
+        width: 44,
+        height: 44,
+        borderRadius: 12,
+        justifyContent: 'center',
+        alignItems: 'center',
+        elevation: 2,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 4,
+    },
+    actionIndicator: {
+        width: 36,
+        height: 36,
+        borderRadius: 10,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    manageInput: {
+        height: 50,
+        borderRadius: 12,
+        borderWidth: 1,
+        paddingHorizontal: 16,
+        fontSize: 15,
+        marginBottom: 16,
+    },
 });
 
 export default TheaterBookingScreen;

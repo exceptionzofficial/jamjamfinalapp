@@ -60,6 +60,26 @@ export const getTheaterShows = async () => {
     return await apiCall('/theater/shows');
 };
 
+export const addTheaterShow = async (show) => {
+    return await apiCall('/theater/shows', {
+        method: 'POST',
+        body: JSON.stringify(show),
+    });
+};
+
+export const updateTheaterShow = async (showId, updates) => {
+    return await apiCall(`/theater/shows/${showId}`, {
+        method: 'PUT',
+        body: JSON.stringify(updates),
+    });
+};
+
+export const deleteTheaterShow = async (showId) => {
+    return await apiCall(`/theater/shows/${showId}`, {
+        method: 'DELETE',
+    });
+};
+
 export const saveTheaterBooking = async (booking) => {
     return await apiCall('/theater/bookings', {
         method: 'POST',
