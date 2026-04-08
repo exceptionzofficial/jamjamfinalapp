@@ -22,8 +22,8 @@ import DateTimePickerModal from "react-native-modal-datetime-picker";
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn, ScaleIn } from '../utils/animations';
-import api, { getNextBillNumber } from '../utils/api';
-import { printBill } from '../services/PrinterService';
+import { getNextBillNumber, calculateTax, getTaxByService, uploadRoomImage, saveBooking, getUPIString } from '../utils/api';
+import { printBill } from '../utils/PrinterService';
 import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 
 // Safe Dimensions access with fallback
@@ -82,13 +82,13 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
 
     // Tax calculation
     const taxInfo = useMemo(() => {
-        return api.calculateTax(pricing.total, taxPercent);
+        return calculateTax(pricing.total, taxPercent);
     }, [pricing.total, taxPercent]);
 
     // Fetch tax on mount
     useEffect(() => {
         const loadTax = async () => {
-            const tax = await api.getTaxByService('rooms');
+            const tax = await getTaxByService('rooms');
             setTaxPercent(tax || 0);
         };
         loadTax();
@@ -141,7 +141,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
             if (type === 'aadhar') {
                 setUploadingAadhar(true);
                 try {
-                    const { publicUrl } = await api.uploadRoomImage(asset.base64, fileName, fileType);
+                    const { publicUrl } = await uploadRoomImage(asset.base64, fileName, fileType);
                     setAadharImage(publicUrl);
                 } catch (error) {
                     Alert.alert('Upload Failed', 'Failed to upload Aadhar photo');
@@ -151,7 +151,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
             } else {
                 setUploadingPan(true);
                 try {
-                    const { publicUrl } = await api.uploadRoomImage(asset.base64, fileName, fileType);
+                    const { publicUrl } = await uploadRoomImage(asset.base64, fileName, fileType);
                     setPanImage(publicUrl);
                 } catch (error) {
                     Alert.alert('Upload Failed', 'Failed to upload PAN photo');
@@ -186,6 +186,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
                         type: room.ac ? 'AC' : 'Non-AC',
                         checkIn: checkInDate.toLocaleString(),
                         checkOut: checkOutDate.toLocaleString(),
+                        quantity: 1,
                         subtotal: pricing.total
                     }
                 ],
@@ -202,7 +203,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
                 timestamp: new Date().toISOString()
             };
 
-            await api.saveBooking(bookingData);
+            await saveBooking(bookingData);
 
             // Print Customer Bill
             const billNo = await getNextBillNumber('R');
@@ -395,7 +396,7 @@ const RoomCheckoutScreen = ({ navigation, route }) => {
                         </View>
                         {selectedPaymentMethod === 'upi' && (
                             <View style={styles.qrSection}>
-                                <QRCode value={api.getUPIString(taxInfo.total)} size={160} />
+                                <QRCode value={getUPIString(taxInfo.total)} size={160} />
                                 <Text style={[styles.qrHint, { color: colors.textPrimary }]}>Pay ₹{taxInfo.total} with any UPI app</Text>
                             </View>
                         )}

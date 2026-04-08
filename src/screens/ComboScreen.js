@@ -36,7 +36,7 @@ import {
     calculateTax,
     getNextBillNumber,
 } from '../utils/api';
-import { printBill } from '../services/PrinterService';
+import { printBill } from '../utils/PrinterService';
 import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 
 // Safe Dimensions access with fallback

@@ -21,9 +21,9 @@ Time:  ${timeStr}
 --------------------------------
 ITEM                    QTY
 --------------------------------
-${items.map(item => `${(item.name || 'Item').padEnd(23)} ${item.quantity.toString().padStart(4)}`).join('\n')}
+${items.map(item => `${(item.name || 'Item').padEnd(23)} ${(item.quantity || 1).toString().padStart(4)}`).join('\n')}
 --------------------------------
-        TOTAL ITEMS: ${items.reduce((sum, item) => sum + item.quantity, 0)}
+        TOTAL ITEMS: ${items.reduce((sum, item) => sum + (item.quantity || 1), 0)}
 --------------------------------
 \n\n\n`;
 
@@ -65,18 +65,18 @@ ITEM            QTY   RATE    AMT
 --------------------------------
 ${items.map(item => {
             const name = (item.name || 'Item').substring(0, 14).padEnd(14);
-            const qty = item.quantity.toString().padStart(3);
+            const qty = (item.quantity || 1).toString().padStart(3);
             const rate = (item.price || 0).toString().padStart(6);
             const amt = (item.subtotal || 0).toString().padStart(6);
             return `${name} ${qty} ${rate} ${amt}`;
         }).join('\n')}
 --------------------------------
-SUBTOTAL:             ${subtotal.toString().padStart(10)}
-TAX (${taxPercent}%):        ${taxAmount.toString().padStart(10)}
+SUBTOTAL:             ${(subtotal || 0).toString().padStart(10)}
+TAX (${taxPercent || 0}%):        ${(taxAmount || 0).toString().padStart(10)}
 --------------------------------
-TOTAL AMT:            ${totalAmount.toString().padStart(10)}.00
+TOTAL AMT:            ${(totalAmount || 0).toString().padStart(10)}.00
 --------------------------------
-${numberToWords(totalAmount)}
+${numberToWords(totalAmount || 0)}
 --------------------------------
     For ${RESORT_DETAILS.name}
 --------------------------------

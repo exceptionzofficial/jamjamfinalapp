@@ -18,7 +18,7 @@ import QRCode from 'react-native-qrcode-svg';
 import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import { getPoolTypes, addPoolType, updatePoolType, deletePoolType, savePoolOrder, UPI_ID, getUPIString, getTaxByService, calculateTax, getNextBillNumber } from '../utils/api';
-import { printBill } from '../services/PrinterService';
+import { printBill } from '../utils/PrinterService';
 import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 import { SlideUp, FadeIn } from '../utils/animations';
 

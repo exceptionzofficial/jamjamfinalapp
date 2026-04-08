@@ -19,7 +19,7 @@ import Header from '../components/Header';
 import { useTheme } from '../context/ThemeContext';
 import { SlideUp, FadeIn } from '../utils/animations';
 import { getTheaterShows, saveTheaterBooking, getUPIString, UPI_ID, addTheaterShow, updateTheaterShow, deleteTheaterShow, getNextBillNumber } from '../utils/api';
-import { printBill } from '../services/PrinterService';
+import { printBill } from '../utils/PrinterService';
 import { RESORT_DETAILS, numberToWords } from '../utils/billUtils';
 import QRCode from 'react-native-qrcode-svg';
 
